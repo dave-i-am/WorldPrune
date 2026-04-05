@@ -32,3 +32,18 @@ jobs:
         with:
           files: build/libs/world-prune-plugin-${{ steps.version.outputs.VERSION }}.jar
           generate_release_notes: true
+
+      - name: Publish to Modrinth
+        uses: Kir-Antipov/mc-publish@v3.3
+        with:
+          modrinth-id: worldprune
+          modrinth-token: ${{ secrets.MODRINTH_TOKEN }}
+          files: build/libs/world-prune-plugin-${{ steps.version.outputs.VERSION }}.jar
+          name: WorldPrune ${{ steps.version.outputs.VERSION }}
+          version: ${{ steps.version.outputs.VERSION }}
+          version-type: release
+          game-versions: 1.21.1
+          loaders: |
+            spigot
+            paper
+            purpur
