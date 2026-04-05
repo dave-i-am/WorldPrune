@@ -12,12 +12,26 @@ jobs:
     strategy:
       matrix:
         spigot-version:
+          - "1.20-R0.1-SNAPSHOT"
           - "1.20.1-R0.1-SNAPSHOT"
+          - "1.20.2-R0.1-SNAPSHOT"
+          - "1.20.3-R0.1-SNAPSHOT"
           - "1.20.4-R0.1-SNAPSHOT"
+          - "1.20.5-R0.1-SNAPSHOT"
           - "1.20.6-R0.1-SNAPSHOT"
+          - "1.21-R0.1-SNAPSHOT"
           - "1.21.1-R0.1-SNAPSHOT"
+          - "1.21.2-R0.1-SNAPSHOT"
+          - "1.21.3-R0.1-SNAPSHOT"
           - "1.21.4-R0.1-SNAPSHOT"
+          - "1.21.5-R0.1-SNAPSHOT"
+          - "1.21.6-R0.1-SNAPSHOT"
+          - "1.21.7-R0.1-SNAPSHOT"
+          - "1.21.8-R0.1-SNAPSHOT"
+          - "1.21.9-R0.1-SNAPSHOT"
+          - "1.21.10-R0.1-SNAPSHOT"
           - "1.21.11-R0.2-SNAPSHOT"
+          - "26.1-R0.1-SNAPSHOT"
           - "26.1.1-R0.1-SNAPSHOT"
 
     name: Compile & test (Spigot ${{ matrix.spigot-version }})
