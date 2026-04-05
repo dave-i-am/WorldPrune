@@ -1,0 +1,83 @@
+name: Update Spigot Versions
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'  # Every Monday at 09:00 UTC
+  workflow_dispatch:
+
+jobs:
+  update-versions:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch available Spigot versions
+        run: |
+          curl -sf \
+            "https://hub.spigotmc.org/nexus/content/repositories/snapshots/org/spigotmc/spigot-api/maven-metadata.xml" \
+            -o maven-metadata.xml
+
+      - name: Update ci.yml and detect new versions
+        id: update
+        run: |
+          python3 << 'EOF'
+          import re, os
+
+          with open('maven-metadata.xml') as f:
+              xml = f.read()
+
+          # All versions in the Nexus metadata, deduplicated, sorted
+          available = sorted(
+              set(re.findall(r'[0-9]+\.[0-9.]*-R[0-9.]+-SNAPSHOT', xml)),
+              key=lambda v: [int(x) if x.isdigit() else x for x in re.split(r'[.\-]', v)]
+          )
+
+          with open('.github/workflows/ci.yml') as f:
+              content = f.read()
+
+          # Versions already present in ci.yml
+          current = re.findall(r'- "([0-9]+\.[0-9.]*-R[0-9.]+-SNAPSHOT)"', content)
+          current_set = set(current)
+
+          new_versions = [v for v in available if v not in current_set]
+          if not new_versions:
+              print("No new versions found.")
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                  f.write("has_new=false\n")
+          else:
+              print(f"New versions: {new_versions}")
+              # Append after the last currently listed version
+              last = current[-1]
+              anchor = f'          - "{last}"'
+              additions = '\n'.join(f'          - "{v}"' for v in new_versions)
+              updated = content.replace(anchor, anchor + '\n' + additions, 1)
+              with open('.github/workflows/ci.yml', 'w') as f:
+                  f.write(updated)
+              with open(os.environ['GITHUB_OUTPUT'], 'a') as fh:
+                  fh.write("has_new=true\n")
+                  # Newline-delimited list for the PR body
+                  fh.write("new_versions=" + ", ".join(new_versions) + "\n")
+          EOF
+
+      - name: Open pull request
+        if: steps.update.outputs.has_new == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ci/update-spigot-versions
+          delete-branch: true
+          commit-message: "ci: add new Spigot API versions to test matrix"
+          title: "ci: add new Spigot API versions"
+          body: |
+            New Spigot API versions detected on the SpigotMC Nexus repository:
+
+            **${{ steps.update.outputs.new_versions }}**
+
+            Added to the CI test matrix in `ci.yml`.
+
+            _Opened automatically by the update-spigot-versions workflow._
+          add-paths: .github/workflows/ci.yml
