@@ -1,0 +1,56 @@
+# Which planning strategy to use: claims | keepRules | combined
+# combined = union of claims + keepRules (safest: only prunes if BOTH agree)
+source: combined
+
+storage:
+  dataRoot: ""  # Empty = plugin data folder
+
+claims:
+  path: "plugins/GriefPreventionData/ClaimData"
+  marginChunks: 5  # Extra chunks to keep around each claim boundary
+
+manualKeep:
+  path: ""  # Optional: file with lines like world;x1;z1;x2;z2
+
+keepRules:
+  mode: entity-aware  # entity-aware | size
+
+  # entity-aware settings
+  entitySizeKeepBytes: 262144  # Keep region if entity file >= this size
+  strongEntityIds:             # Keep region if any of these entity types found (player-placed only)
+    - "minecraft:item_frame"
+    - "minecraft:glow_item_frame"
+    - "minecraft:armor_stand"
+    - "minecraft:painting"
+    - "minecraft:leash_knot"
+
+  # size-mode settings
+  size:
+    entitiesMinBytes: 131072
+    poiMinBytes: 65536
+    regionMinBytes: 65536
+
+safety:
+  requireConfirmToken: true   # Require /prune apply --confirm <token>
+  quarantineOnly: true        # Move to quarantine folder (never hard-delete)
+
+# ┌──────────────────────────────────────────────────────────────────────────┐
+# │  WARNING: setting schedule.enabled to true will cause region files to be  │
+# │  moved to quarantine AUTOMATICALLY and UNATTENDED on the configured       │
+# │  interval. Applied files are still recoverable via /prune undo, but this  │
+# │  bypasses all interactive confirmation steps.                             │
+# │                                                                           │
+# │  Setting autoPurge.enabled to true will PERMANENTLY DELETE quarantine     │
+# │  entries older than retainDays with NO possibility of recovery.           │
+# │                                                                           │
+# │  Only enable this on servers you manage directly and back up regularly.   │
+# │  Ensure the worlds listed below are correct before enabling.              │
+# └──────────────────────────────────────────────────────────────────────────┘
+schedule:
+  enabled: false
+  intervalHours: 168   # How often to run (default: 1 week)
+  autoPurge:
+    enabled: false     # WARNING: permanently deletes old quarantine entries
+    retainDays: 30     # Keep quarantine entries for this many days before purging
+  worlds:              # Worlds to scan and apply automatically
+    - world

@@ -1,0 +1,277 @@
+# WorldPrune — Agent Reference
+
+This file is the primary reference for LLM agents working on this codebase. Read it before making changes.
+
+## Quick Start
+- **Build**: `./gradlew build`
+- **Output JAR**: `build/libs/world-prune-plugin-0.1.0.jar`
+- **Package**: `dev.minecraft.prune`
+- **Main class**: `WorldPrunePlugin`
+- **Config**: `src/main/resources/config.yml`
+- **Manifest**: `src/main/resources/plugin.yml`
+
+## Architecture Overview
+
+The plugin uses an **artifact-first model**: all planning produces frozen snapshots stored in `<plugin-data>/reports/<planId>/`.
+
+```
+WorldPrunePlugin (bootstrap)
+├── PlanService (claims-based planning)
+├── HeuristicService (size/entity-aware filtering)
+├── ApplyService (quarantine moves + stale lock recovery)
+├── RestoreService (quarantine rollback)
+├── PurgeService (permanent quarantine deletion)
+├── ScheduleService (automated scheduled scan + apply)
+├── PlanStore (artifact metadata)
+├── ClaimBoundsProvider (GriefPrevention + file parsing)
+└── PruneCommand (CLI dispatch)
+```
+
+## Command Model
+
+All commands are read-only during planning phases. Destructive actions require a two-step staged confirmation (`/prune confirm`).
+
+```
+/prune scan [world]              — analyse world and generate a plan
+/prune plans [world]             — list stored plans
+/prune plan <planId>             — show plan details
+/prune apply [world] [--force-unlock]  — preview apply and stage for confirmation
+/prune confirm                   — execute the staged action (30 s window)
+/prune undo [world] [<apply-id>] — restore from quarantine
+/prune quarantine [world]        — list quarantine directories
+/prune drop <world> <apply-id>   — preview permanent delete and stage for confirmation
+/prune map [world] [planId]      — give yourself a FILLED_MAP item showing the keep/prune grid
+/prune status
+```
+
+## Key Files & Responsibilities
+
+| File | Purpose |
+|------|---------|
+| [PlanService.java](src/main/java/dev/minecraft/prune/PlanService.java) | Claims-based planning (GriefPrevention API + file fallback + manual keep merge). | Outputs: keep-regions, prune-candidates, kept-existing, summary. Saves metadata to PlanStore. |
+| [HeuristicService.java](src/main/java/dev/minecraft/prune/HeuristicService.java) | Size and entity-aware heuristic filtering. | Two modes: `size` (threshold-based), `entity-aware` (payload scanning). Saves metadata to PlanStore. |
+| [PlanStore.java](src/main/java/dev/minecraft/prune/PlanStore.java) | Artifact metadata persistence (CSV index + per-plan metadata). | Keeps all plans queryable. Index lives at `<reports>/plans.index`. |
+| [ClaimBoundsProvider.java](src/main/java/dev/minecraft/prune/ClaimBoundsProvider.java) | GriefPrevention integration (reflection) + claim file parsing. | Gracefully falls back if GP API unavailable or not installed. |
+| [ApplyService.java](src/main/java/dev/minecraft/prune/ApplyService.java) | Quarantine-only region moves. Lock file, apply-manifest.json, idempotent re-run, stale lock detection/recovery.
+| [RestoreService.java](src/main/java/dev/minecraft/prune/RestoreService.java) | Manifest-guided restore. Optional `applyId` arg or latest. Renames manifest to `.restored.json` on completion.
+| [PurgeService.java](src/main/java/dev/minecraft/prune/PurgeService.java) | Permanent deletion of quarantine dirs. Lists ACTIVE/RESTORED/INCOMPLETE dirs. Token derived via `tokenForApply()`.
+| [ScheduleService.java](src/main/java/dev/minecraft/prune/ScheduleService.java) | Automated hourly heartbeat. Reads `schedule.enabled/intervalHours/worlds` from config. Generates a combined plan then immediately applies it (quarantine-only). Persists last-run timestamps to `schedule-state.properties`. Stops gracefully on `onDisable`.
+| [PruneMapRenderer.java](src/main/java/dev/minecraft/prune/PruneMapRenderer.java) | `MapRenderer` subclass that paints keep/prune/zone region squares onto a 128×128 Minecraft map canvas. Green=keep, red=prune, blue=zone. Bottom 10px reserved for coloured legend swatches. |
+| [MapVisualizer.java](src/main/java/dev/minecraft/prune/MapVisualizer.java) | Reads plan region files, builds a `MapView` with `PruneMapRenderer`, and returns a `FILLED_MAP` `ItemStack` with display name and lore. Called by `/prune map`. |
+| [JsonUtil.java](src/main/java/dev/minecraft/prune/JsonUtil.java) | Minimal JSON serialiser (no external deps). `toJson(Map<String,Object>)` handles String, Number, Boolean, List<String>, null. Used by PlanService, HeuristicService, ApplyService for `summary.json` / `apply-report.json`. |
+| [PruneCommand.java](src/main/java/dev/minecraft/prune/PruneCommand.java) | Command parsing and dispatch. Async planning via Bukkit scheduler.
+| [WorldPrunePlugin.java](src/main/java/dev/minecraft/prune/WorldPrunePlugin.java) | Plugin bootstrap. Initializes all services, registers command, warns on stale locks at startup.
+| [build.gradle.kts](build.gradle.kts) | Gradle build config — Java 21 + Spigot API 1.21.1 (runs on Spigot, Paper, and all forks). |
+| [config.yml](src/main/resources/config.yml) | Runtime defaults. | Claims path, keepRules thresholds, margin chunks. |
+
+## Development Workflow
+
+1. Run `./gradlew build` before and after changes to verify zero errors.
+2. If adding config keys, add defaults to `config.yml`.
+3. Always call `savePlanMetadata()` after generating a plan so it appears in `/prune plans`.
+
+### Async Operations
+- All long-running tasks (planning, heuristic scan, apply/undo) run via `Bukkit.getScheduler().runTaskAsynchronously(plugin, ...)`.
+- Command sender receives feedback immediately; work completes in background.
+- Use `sender.sendMessage()` for progress updates.
+
+### Error Handling
+- Catch exceptions in async tasks and log to `plugin.getLogger()`.
+- Always return something to the operator (success or error message).
+- Never crash the server; fail gracefully.
+
+## Safety Model
+
+- **Quarantine-first**: files are moved to `<world>/quarantine/<apply-id>/`, never hard deleted by apply.
+- **Manifest**: every apply writes `apply-manifest.json` to enable full rollback via undo.
+- **Lock file**: `<world>/quarantine/.apply-lock` prevents concurrent applies to the same world. Stale locks (from server crashes) are detected on startup and at apply-preview time; cleared with `--force-unlock`.
+- **Staged confirm**: destructive operations (`apply`, `drop`) show a preview then require `/prune confirm` within 30 seconds. No clipboard-copy of tokens required.
+- **Idempotent**: re-running the same apply ID safely skips already-quarantined files.
+- **Drop**: permanent deletion uses `PurgeService.tokenForApply()` internally; the operator never needs to copy/paste a token.
+
+## Permissions
+
+```
+prune.admin        (default: op)  — scan, plans, plan, status
+  └── prune.admin.apply           — apply, confirm (apply), undo
+  └── prune.admin.purge           — drop, confirm (drop), quarantine
+```
+
+## Testing
+
+### Framework & Tooling
+- **Unit test framework**: JUnit 5 (`junit-jupiter`)
+- **Language**: Java tests under `src/test/java`
+- **Mocking**: Mockito (`mockito-core`) for Bukkit interfaces
+- **Coverage**: JaCoCo HTML + XML report via `jacocoTestReport`
+- **Build command**: `./gradlew test` (or `./gradlew build`)
+
+### Current automated test coverage
+- [src/test/java/dev/minecraft/prune/PlanStoreTest.java](src/test/java/dev/minecraft/prune/PlanStoreTest.java)
+  - Metadata persistence round-trip (`savePlanMetadata()` / `loadPlanMetadata()`)
+  - Index ordering and world filtering (`listPlans()`)
+  - Malformed index-line tolerance
+- [src/test/java/dev/minecraft/prune/ClaimBoundsProviderTest.java](src/test/java/dev/minecraft/prune/ClaimBoundsProviderTest.java)
+  - File-based claim parsing fallback path
+  - World marker filtering behavior
+  - Missing claim-directory behavior
+- [src/test/java/dev/minecraft/prune/HeuristicModeTest.java](src/test/java/dev/minecraft/prune/HeuristicModeTest.java)
+  - CLI parsing stability and safe defaults
+- [src/test/java/dev/minecraft/prune/HeuristicServiceTest.java](src/test/java/dev/minecraft/prune/HeuristicServiceTest.java)
+  - Entity-aware evaluation: missing/empty dir, non-.mca files ignored
+  - Size fast-path: file ≥ threshold → kept without scanning
+  - Payload scan: villager, item_frame, armor_stand (GZIP-compressed), customname, owneruuid, owner signals → keep
+  - Payload scan: no signals, file shorter than 8192-byte header → prune
+  - `minecraft:chest_minecart` explicitly excluded even when in strongEntityIds
+  - Corrupt/undecompressable chunk → conservative keep
+  - Mixed multi-file result; case-insensitive payload matching
+- [src/test/java/dev/minecraft/prune/RectTest.java](src/test/java/dev/minecraft/prune/RectTest.java)
+  - Coordinate normalization helpers
+- [src/test/java/dev/minecraft/prune/JsonUtilTest.java](src/test/java/dev/minecraft/prune/JsonUtilTest.java)
+  - String, number, boolean, null, and List&lt;String&gt; value encoding
+  - String escaping (quotes, backslash, newline, tab)
+  - Insertion-order preservation; comma placement; multi-field object structure
+- [src/test/java/dev/minecraft/prune/ApplyServiceTest.java](src/test/java/dev/minecraft/prune/ApplyServiceTest.java)
+  - `loadCandidates()` file resolution (canonical + heuristic variant names, non-.mca filtering)
+  - Full apply round-trip: file moves, quarantine structure, manifest content, applyId format
+  - Lock file: created during apply, cleaned up after, error on duplicate
+  - Idempotency: second apply with files already quarantined skips gracefully
+  - Wrong token: throws IOException
+  - No candidates: completes gracefully with progress message
+- [src/test/java/dev/minecraft/prune/RestoreServiceTest.java](src/test/java/dev/minecraft/prune/RestoreServiceTest.java)
+  - `readManifestMoves()`: normal manifest, empty array, missing key
+  - `findLatestApplyDir()`: max-by-name selection, ignores dirs without manifest, null when empty/missing
+  - Full restore round-trip: files returned, manifest renamed to `.restored.json`
+  - Latest apply (null applyId) resolves correctly
+  - Missing manifest / missing apply dir: throws IOException
+  - Idempotency: skips gracefully when destination already exists
+
+- [src/test/java/dev/minecraft/prune/PruneCommandTest.java](src/test/java/dev/minecraft/prune/PruneCommandTest.java)
+  - Permission gating (no `prune.admin` → rejected; no `prune.admin.apply` → apply rejected)
+  - Subcommand routing: `noArgs` → usage; unknown subcommand → error
+  - `status` — banner, source, and keep-rules mode fields
+  - `plans` — empty state message
+  - `plan <id>` — missing arg error; unknown ID error
+  - `confirm` with nothing staged
+- [src/test/java/dev/minecraft/prune/MapVisualizerParseTest.java](src/test/java/dev/minecraft/prune/MapVisualizerParseTest.java)
+  - `parseRegionName()`: normal positive/negative coords, zero-zero, wrong extension, missing `r` prefix, too few/many parts, non-numeric coord, null input
+
+**Total: 90 automated tests passing.**
+
+### End-to-End Testing
+
+E2e tests run against a live Docker container via `rcon-cli`. Java is managed by **mise**; all tasks are Gradle tasks.
+
+**Prerequisites** (one-time, via Homebrew):
+```bash
+brew install mise
+```
+
+**Container** expected: `paper-test-server` (Docker, `itzg/minecraft-server`).  
+Configured via env vars: `MINECRAFT_CONTAINER`, `MINECRAFT_WORLD`, `MINECRAFT_DATA_DIR` (data volume path, defaults to `$HOME/minecraft-test-server/data`).
+
+**Gradle tasks:**
+
+| Command | What it does |
+|---|---|
+| `./gradlew build` | Compile + unit tests |
+| `./gradlew serverStart` | Start stopped container or create it fresh |
+| `./gradlew deploy` | Build then copy JAR into container |
+| `./gradlew serverReload` | `reload confirm` via rcon |
+| `./gradlew e2e` | serverStart → deploy → serverReload → e2eTest |
+| `./gradlew e2eTest` | Run `e2e/run.sh` against an already-running container |
+| `./gradlew rcon -Pargs="prune status"` | One-off rcon command |
+| `./gradlew logs` | Tail container logs |
+
+```bash
+# Full flow (creates/starts container if needed, then tests):
+./gradlew e2e
+
+# Run tests against an already-running container (no rebuild):
+MINECRAFT_CONTAINER=my-server MINECRAFT_WORLD=survival ./gradlew e2eTest
+```
+
+**Test script** — `e2e/run.sh` covers (47 assertions):
+- `status`, `scan`, `plans`, `plan <id>`
+- `apply` preview (no token shown) + staged `confirm`
+- quarantine listing (ACTIVE state)
+- `undo` + quarantine listing (RESTORED state)
+- `drop` preview + staged `confirm` + entry gone
+- `confirm` with nothing pending
+- Unknown subcommand and missing argument errors
+
+Exit code 0 = all pass; non-zero = failures listed in summary.
+
+### Unit Testing
+- Run with `./gradlew test`.
+- View coverage at `build/reports/jacoco/test/html/index.html`.
+- Prefer deterministic tests (temp directories + fixed file contents + no server runtime).
+
+
+## Configuration
+
+### Default Values (config.yml)
+```yaml
+storage:
+  dataRoot: ""  # Empty = use plugin data folder
+
+claims:
+  path: "plugins/GriefPreventionData/ClaimData"
+
+manualKeep:
+  path: ""  # Optional
+
+plan:
+  claimMarginChunks: 5
+
+keepRules:
+  mode: "entity-aware"
+  entitySizeKeepBytes: 262144
+  strongEntityIds:
+    - "minecraft:item_frame"
+    - "minecraft:glow_item_frame"
+    - "minecraft:armor_stand"
+    - "minecraft:painting"
+    - "minecraft:leash_knot"
+  size:
+    entitiesMinBytes: 131072
+    poiMinBytes: 65536
+    regionMinBytes: 65536
+
+safety:
+  dryRunDefault: true
+
+# WARNING: enabling this automates the full scan+apply cycle unattended
+schedule:
+  enabled: false
+  intervalHours: 168
+  autoPurge:
+    enabled: false   # WARNING: permanently deletes quarantine entries older than retainDays
+    retainDays: 30
+  worlds:
+    - world
+```
+
+## Common Pitfalls
+
+1. **Async scheduling**: Always use `Bukkit.getScheduler().runTaskAsynchronously()` for I/O.
+2. **GriefPrevention reflection**: Gracefully handle missing API; don't crash.
+3. **Chunk → Region math**: Regions are 32×32 chunks. Use `Math.floorDiv(chunk, 32)` for region ID.
+4. **File paths**: Always resolve relative paths relative to world container or plugin data folder.
+5. **PlanStore**: Always call `savePlanMetadata()` after generating a plan so it's discoverable via `plan list`.
+
+## Debugging
+
+- Check server logs for `[WorldPrune]` prefix.
+- Inspect report files directly: `ls plugins/WorldPrune/reports/plan-*/`.
+- Query PlanStore index: `cat plugins/WorldPrune/reports/plans.index`.
+- Enable debug logging in Paper server config if needed.
+
+## References
+
+- **GriefPrevention API**: Use reflection to avoid hard dependency.
+- **Spigot/Bukkit API docs**: https://hub.spigotmc.org/javadocs/spigot/
+- **Paper API docs**: https://papermc.io/javadocs/paper/1.21.1/ (superset; safe to reference for Paper-specific behaviour)
+- **Minecraft region format**: Each region file covers 32×32 chunks (512×512 blocks).
+
+
