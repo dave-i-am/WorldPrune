@@ -6,6 +6,8 @@ plugins {
 group = "dev.minecraft.prune"
 version = "0.1.0"
 
+val spigotVersion = project.findProperty("spigotVersion")?.toString() ?: "1.21.1-R0.1-SNAPSHOT"
+
 repositories {
     mavenCentral()
     maven("https://hub.spigotmc.org/nexus/content/repositories/snapshots/")
@@ -13,7 +15,7 @@ repositories {
 }
 
 dependencies {
-    compileOnly("org.spigotmc:spigot-api:1.21.1-R0.1-SNAPSHOT")
+    compileOnly("org.spigotmc:spigot-api:$spigotVersion")
 
     testImplementation("org.junit.jupiter:junit-jupiter:6.0.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
