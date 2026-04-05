@@ -17,6 +17,8 @@ jobs:
           - "1.20.6-R0.1-SNAPSHOT"
           - "1.21.1-R0.1-SNAPSHOT"
           - "1.21.4-R0.1-SNAPSHOT"
+          - "1.21.11-R0.2-SNAPSHOT"
+          - "26.1.1-R0.1-SNAPSHOT"
 
     name: Compile & test (Spigot ${{ matrix.spigot-version }})
 
