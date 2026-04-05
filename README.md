@@ -6,7 +6,7 @@ WorldPrune is an operator-only Paper/Spigot plugin that identifies region files 
 
 ## Requirements
 
-- Paper or Spigot 1.21.1+
+- Paper or Spigot 1.20.1+
 - Java 21+
 - [GriefPrevention](https://www.spigotmc.org/resources/griefprevention.1573/) (optional — used as the primary claim source; falls back to claim file parsing if the API is unavailable)
 
