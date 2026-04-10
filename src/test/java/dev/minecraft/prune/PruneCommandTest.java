@@ -97,6 +97,10 @@ class PruneCommandTest {
         player.assertSaid("§e§lWorldPrune Status");
         player.assertSaid("§7Source:         §fcombined"); // default from config.yml
         player.assertSaid("§7Keep-rules mode: §fentity-aware");
+        player.nextMessage(); // claim margin
+        player.nextMessage(); // quarantine only
+        player.nextMessage(); // confirm token
+        player.assertSaid("§7CoreProtect:    §7inactive"); // CP not installed in test env
     }
 
     // ── plans ─────────────────────────────────────────────────────────────────

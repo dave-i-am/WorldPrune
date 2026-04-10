@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.zip.GZIPOutputStream;
@@ -318,5 +319,85 @@ class HeuristicServiceTest {
         Set<String> kept = service.evaluateEntityAware(entitiesDir, THRESHOLD_HIGH,
                 List.of("minecraft:villager"));
         assertTrue(kept.contains("r.11.0.mca"), "Match should be case-insensitive");
+    }
+
+    // ── CoreProtect rescue pass ───────────────────────────────────────────────
+
+    /** Convenience: a CoreProtectProvider whose hasRecentActivity always returns the given value. */
+    private static CoreProtectProvider stubbedProvider(boolean returnValue) {
+        return new CoreProtectProvider(true) {
+            @Override
+            boolean hasRecentActivity(String worldName, int rx, int rz, int days) {
+                return returnValue;
+            }
+        };
+    }
+
+    @Test
+    void rescuePass_noProviderSet_returnsZeroAndLeavesSetUnchanged() {
+        // No provider injected → method should short-circuit immediately.
+        Set<String> keep  = new HashSet<>();
+        Set<String> prune = new HashSet<>(Set.of("r.0.0.mca", "r.1.0.mca"));
+        int rescued = service.applyCoreProtectRescue("world", keep, prune);
+        assertEquals(0, rescued);
+        assertTrue(keep.isEmpty());
+        assertEquals(2, prune.size());
+    }
+
+    @Test
+    void rescuePass_unavailableProvider_returnsZeroAndLeavesSetUnchanged() {
+        service.setCoreProtectProvider(new CoreProtectProvider(false));
+        Set<String> keep  = new HashSet<>();
+        Set<String> prune = new HashSet<>(Set.of("r.0.0.mca"));
+        int rescued = service.applyCoreProtectRescue("world", keep, prune);
+        assertEquals(0, rescued);
+        assertTrue(keep.isEmpty());
+        assertTrue(prune.contains("r.0.0.mca"));
+    }
+
+    @Test
+    void rescuePass_activityDetected_movesRegionsFromPruneToKeep() {
+        service.setCoreProtectProvider(stubbedProvider(true));
+        Set<String> keep  = new HashSet<>();
+        Set<String> prune = new HashSet<>(Set.of("r.4.2.mca", "r.-1.0.mca"));
+        int rescued = service.applyCoreProtectRescue("world", keep, prune);
+        assertEquals(2, rescued);
+        assertTrue(keep.contains("r.4.2.mca"),  "r.4.2.mca should be rescued");
+        assertTrue(keep.contains("r.-1.0.mca"), "r.-1.0.mca should be rescued");
+        assertTrue(prune.isEmpty(), "Prune set should be empty after full rescue");
+    }
+
+    @Test
+    void rescuePass_noActivity_regionRemainsInPrune() {
+        service.setCoreProtectProvider(stubbedProvider(false));
+        Set<String> keep  = new HashSet<>();
+        Set<String> prune = new HashSet<>(Set.of("r.0.0.mca"));
+        int rescued = service.applyCoreProtectRescue("world", keep, prune);
+        assertEquals(0, rescued);
+        assertFalse(keep.contains("r.0.0.mca"), "No activity → must not be rescued");
+        assertTrue(prune.contains("r.0.0.mca"),  "Should remain in prune");
+    }
+
+    @Test
+    void rescuePass_unparseableFilename_skipped() {
+        // Files whose names don't match r.X.Z.mca have no region coords → skipped.
+        service.setCoreProtectProvider(stubbedProvider(true));
+        Set<String> keep  = new HashSet<>();
+        Set<String> prune = new HashSet<>(Set.of("invalid.mca", "r.mca"));
+        int rescued = service.applyCoreProtectRescue("world", keep, prune);
+        assertEquals(0, rescued, "Un-parseable filenames should be skipped");
+        assertTrue(keep.isEmpty());
+    }
+
+    @Test
+    void rescuePass_alreadyKeptRegionNotDoubledUp() {
+        // r.0.0.mca is already in keep (entity-scan saved it), not in prune.
+        // The rescue pass only looks at prune, so keep is unaffected.
+        service.setCoreProtectProvider(stubbedProvider(true));
+        Set<String> keep  = new HashSet<>(Set.of("r.0.0.mca"));
+        Set<String> prune = new HashSet<>();
+        int rescued = service.applyCoreProtectRescue("world", keep, prune);
+        assertEquals(0, rescued);
+        assertEquals(1, keep.size(), "Keep set should be unchanged");
     }
 }

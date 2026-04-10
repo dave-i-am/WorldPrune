@@ -1,0 +1,21 @@
+services:
+  paper-test-server:
+    image: itzg/minecraft-server:latest
+    container_name: paper-test-server
+    environment:
+      EULA: "TRUE"
+      TYPE: PAPER
+      VERSION: "1.21.1"
+      ONLINE_MODE: "FALSE"
+      ENABLE_RCON: "true"
+      RCON_PASSWORD: minecraft
+      RCON_PORT: "25575"
+      # itzg downloads these from Modrinth on startup; pin to a specific version
+      # by appending :version-id (e.g. coreprotect:FrzYhM5t).
+      MODRINTH_PROJECTS: "coreprotect"
+    ports:
+      - "25565:25565"
+    volumes:
+      - "${MINECRAFT_DATA_DIR:-${HOME}/minecraft-test-server/data}:/data"
+    stdin_open: true
+    tty: true

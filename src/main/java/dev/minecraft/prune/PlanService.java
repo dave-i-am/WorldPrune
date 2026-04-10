@@ -107,8 +107,10 @@ public final class PlanService {
         List<Rect> manualBlocks = loadManualKeepBlocks(world);
         Set<String> claimKeep = toKeepRegions(claimBlocks, marginChunks, manualBlocks);
 
-        // --- Heuristic side ---
-        Set<String> heuristicKeep = heuristicService.computeKeepRegions(world, heuristicMode);
+        // --- Heuristic side (includes CoreProtect rescue pass if CP is present) ---
+        HeuristicService.ComputeResult hResult = heuristicService.computeKeepRegions(world, heuristicMode);
+        Set<String> heuristicKeep = hResult.keepRegions();
+        int cpRescued = hResult.cpRescued();
 
         // Union: keep anything either source says to keep
         Set<String> keepRegions = new HashSet<>(claimKeep);
@@ -141,6 +143,7 @@ public final class PlanService {
         summaryFields.put("claimKeepRegions", claimKeep.size());
         summaryFields.put("heuristicKeepRegions", heuristicKeep.size());
         summaryFields.put("combinedKeepRegions", keepRegions.size());
+        if (cpRescued > 0) summaryFields.put("coreprotectRescued", cpRescued);
         summaryFields.put("existingRegionFiles", existingRegionNames.size());
         summaryFields.put("pruneCandidates", pruneCandidates.size());
         summaryFields.put("reclaimableGiBEstimate", reclaimableGiB);

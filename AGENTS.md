@@ -52,6 +52,7 @@ All commands are read-only during planning phases. Destructive actions require a
 | [HeuristicService.java](src/main/java/dev/minecraft/prune/HeuristicService.java) | Size and entity-aware heuristic filtering. | Two modes: `size` (threshold-based), `entity-aware` (payload scanning). Saves metadata to PlanStore. |
 | [PlanStore.java](src/main/java/dev/minecraft/prune/PlanStore.java) | Artifact metadata persistence (CSV index + per-plan metadata). | Keeps all plans queryable. Index lives at `<reports>/plans.index`. |
 | [ClaimBoundsProvider.java](src/main/java/dev/minecraft/prune/ClaimBoundsProvider.java) | GriefPrevention integration (reflection) + claim file parsing. | Gracefully falls back if GP API unavailable or not installed. |
+| [CoreProtectProvider.java](src/main/java/dev/minecraft/prune/CoreProtectProvider.java) | Queries CoreProtect's SQLite `database.db` directly — no `api.enabled` requirement. `isAvailable()` returns true when the DB file exists. `hasRecentActivity(worldName, rx, rz, days)` runs a bounded `co_block` lookup. `sqlite-jdbc` is shaded into the plugin JAR. |
 | [ApplyService.java](src/main/java/dev/minecraft/prune/ApplyService.java) | Quarantine-only region moves. Lock file, apply-manifest.json, idempotent re-run, stale lock detection/recovery.
 | [RestoreService.java](src/main/java/dev/minecraft/prune/RestoreService.java) | Manifest-guided restore. Optional `applyId` arg or latest. Renames manifest to `.restored.json` on completion.
 | [PurgeService.java](src/main/java/dev/minecraft/prune/PurgeService.java) | Permanent deletion of quarantine dirs. Lists ACTIVE/RESTORED/INCOMPLETE dirs. Token derived via `tokenForApply()`.
@@ -61,7 +62,7 @@ All commands are read-only during planning phases. Destructive actions require a
 | [JsonUtil.java](src/main/java/dev/minecraft/prune/JsonUtil.java) | Minimal JSON serialiser (no external deps). `toJson(Map<String,Object>)` handles String, Number, Boolean, List<String>, null. Used by PlanService, HeuristicService, ApplyService for `summary.json` / `apply-report.json`. |
 | [PruneCommand.java](src/main/java/dev/minecraft/prune/PruneCommand.java) | Command parsing and dispatch. Async planning via Bukkit scheduler.
 | [WorldPrunePlugin.java](src/main/java/dev/minecraft/prune/WorldPrunePlugin.java) | Plugin bootstrap. Initializes all services, registers command, warns on stale locks at startup.
-| [build.gradle.kts](build.gradle.kts) | Gradle build config — Java 21 + Spigot API 1.21.1 (runs on Spigot, Paper, and all forks). |
+| [build.gradle.kts](build.gradle.kts) | Gradle build config — Java 21 + Spigot API 1.21.1 (runs on Spigot, Paper, and all forks). Shadow plugin (`com.gradleup.shadow`) shades `sqlite-jdbc` into the output JAR. |
 | [config.yml](src/main/resources/config.yml) | Runtime defaults. | Claims path, keepRules thresholds, margin chunks. |
 
 ## Development Workflow
@@ -125,6 +126,7 @@ prune.admin        (default: op)  — scan, plans, plan, status
   - `minecraft:chest_minecart` explicitly excluded even when in strongEntityIds
   - Corrupt/undecompressable chunk → conservative keep
   - Mixed multi-file result; case-insensitive payload matching
+  - `applyCoreProtectRescue`: no provider, unavailable provider, activity detected, no activity, un-parseable filename, already-kept region not doubled
 - [src/test/java/dev/minecraft/prune/RectTest.java](src/test/java/dev/minecraft/prune/RectTest.java)
   - Coordinate normalization helpers
 - [src/test/java/dev/minecraft/prune/JsonUtilTest.java](src/test/java/dev/minecraft/prune/JsonUtilTest.java)
@@ -155,20 +157,33 @@ prune.admin        (default: op)  — scan, plans, plan, status
   - `confirm` with nothing staged
 - [src/test/java/dev/minecraft/prune/MapVisualizerParseTest.java](src/test/java/dev/minecraft/prune/MapVisualizerParseTest.java)
   - `parseRegionName()`: normal positive/negative coords, zero-zero, wrong extension, missing `r` prefix, too few/many parts, non-numeric coord, null input
+- [src/test/java/dev/minecraft/prune/CoreProtectProviderTest.java](src/test/java/dev/minecraft/prune/CoreProtectProviderTest.java)
+  - Unavailable when DB file does not exist
+  - Available when DB file exists
+  - Stub constructors (available/unavailable) for behaviour overrides
+  - `hasRecentActivity` returns false when unavailable
+  - Detects activity within region bounds and lookback window (real SQLite)
+  - Returns false for activity in a different region
+  - Returns false for activity in a different world
+  - Returns false for activity outside the lookback window
+  - Returns false (fail-open) on corrupt/empty DB file
+  - Behaviour-override subclass pattern verified
 
-**Total: 90 automated tests passing.**
+**Total: 108 automated tests passing.**
 
-### End-to-End Testing
+### Integration Testing
 
-E2e tests run against a live Docker container via `rcon-cli`. Java is managed by **mise**; all tasks are Gradle tasks.
+Integration tests run against a live Docker container via `rcon-cli`. They run automatically in CI (`.github/workflows/ci.yml`); for local runs, Java is managed by **mise** and all tasks are Gradle tasks.
 
-**Prerequisites** (one-time, via Homebrew):
+**Prerequisites** (one-time, local only — not needed in CI):
 ```bash
 brew install mise
 ```
 
-**Container** expected: `paper-test-server` (Docker, `itzg/minecraft-server`).  
-Configured via env vars: `MINECRAFT_CONTAINER`, `MINECRAFT_WORLD`, `MINECRAFT_DATA_DIR` (data volume path, defaults to `$HOME/minecraft-test-server/data`).
+**Container**: `paper-test-server` is managed via `docker-compose.yml` at the repo root.  
+`docker-compose.yml` declares `MODRINTH_PROJECTS: coreprotect` — itzg downloads CoreProtect from Modrinth automatically on first container start, so no manual CP deployment is needed.  
+
+Configurable env vars: `MINECRAFT_CONTAINER`, `MINECRAFT_WORLD`, `MINECRAFT_DATA_DIR` (data volume path, defaults to `$HOME/minecraft-test-server/data`).
 
 **Gradle tasks:**
 
@@ -178,20 +193,23 @@ Configured via env vars: `MINECRAFT_CONTAINER`, `MINECRAFT_WORLD`, `MINECRAFT_DA
 | `./gradlew serverStart` | Start stopped container or create it fresh |
 | `./gradlew deploy` | Build then copy JAR into container |
 | `./gradlew serverReload` | `reload confirm` via rcon |
-| `./gradlew e2e` | serverStart → deploy → serverReload → e2eTest |
-| `./gradlew e2eTest` | Run `e2e/run.sh` against an already-running container |
+| `./gradlew integration` | serverStart → deploy → serverReload → worldSeed → integrationTest |
+| `./gradlew integrationTest` | Run `integration/run.sh` against an already-running container |
+| `./gradlew cpSeed` | Seed CP DB with fake activity + create test .mca files (CP itself comes via Modrinth on container start) |
+| `./gradlew integrationTestCP` | Run `integration/cp-run.sh` against an already-running container |
+| `./gradlew integrationCP` | serverStart → deploy → cpSeed → integrationTestCP |
 | `./gradlew rcon -Pargs="prune status"` | One-off rcon command |
 | `./gradlew logs` | Tail container logs |
 
 ```bash
 # Full flow (creates/starts container if needed, then tests):
-./gradlew e2e
+./gradlew integration
 
 # Run tests against an already-running container (no rebuild):
-MINECRAFT_CONTAINER=my-server MINECRAFT_WORLD=survival ./gradlew e2eTest
+MINECRAFT_CONTAINER=my-server MINECRAFT_WORLD=survival ./gradlew integrationTest
 ```
 
-**Test script** — `e2e/run.sh` covers (47 assertions):
+**Test script** — `integration/run.sh` covers (47 assertions):
 - `status`, `scan`, `plans`, `plan <id>`
 - `apply` preview (no token shown) + staged `confirm`
 - quarantine listing (ACTIVE state)
@@ -200,7 +218,16 @@ MINECRAFT_CONTAINER=my-server MINECRAFT_WORLD=survival ./gradlew e2eTest
 - `confirm` with nothing pending
 - Unknown subcommand and missing argument errors
 
-Exit code 0 = all pass; non-zero = failures listed in summary.
+**CoreProtect test script** — `integration/cp-run.sh` covers (18 assertions):
+- `/prune status` shows `CoreProtect: active`
+- Scan produces a combined plan
+- `keep-regions-combined.txt` contains `r.0.0.mca` (rescued by CP)
+- `prune-candidate-regions.txt` contains `r.1.0.mca` (no CP activity)
+- `r.0.0.mca` absent from prune candidates; `r.1.0.mca` absent from keep set
+- `summary.json` contains `coreprotectRescued` with a non-zero value
+- `/prune plan <id>` reflects the keep count
+
+Setup: `integration/cp-seed.sh` seeds the CoreProtect SQLite DB with a block-placement event at (256, 64, 256) (inside region `r.0.0`), and creates empty `.mca` fixture files for both `r.0.0` and `r.1.0`. CoreProtect itself is downloaded automatically via `MODRINTH_PROJECTS` in `docker-compose.yml`.
 
 ### Unit Testing
 - Run with `./gradlew test`.
