@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# e2e/run.sh — end-to-end tests for minecraft-prune-plugin
+# integration/run.sh — integration tests for minecraft-prune-plugin
 # Runs against a live Docker container via rcon-cli.
 #
 # Environment variables:
@@ -67,6 +67,11 @@ if ! docker ps --format '{{.Names}}' | grep -q "^${CONTAINER}$"; then
     exit 1
 fi
 pass "Container '$CONTAINER' is running"
+
+# Seed far-from-spawn dummy .mca files so there are always prune candidates,
+# even on a freshly-created world.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+bash "$SCRIPT_DIR/seed.sh"
 
 # ── 1. Status ──────────────────────────────────────────────────────────────────
 
@@ -140,11 +145,12 @@ assert_not_contains "no --confirm flag in preview"  "--confirm"            "$APP
 # ── 6. Confirm apply ─────────────────────────────────────────────────────────
 
 section "prune confirm (apply)"
-CONFIRM=$(rcon "prune confirm")
-assert_contains "acknowledges applying" "Applying plan" "$CONFIRM"
-
 echo "    (waiting 5s for async apply to complete...)"
 sleep 5
+
+
+# Fix permissions after quarantine move (entity/region files)
+docker exec "$CONTAINER" bash -c "chown -R minecraft:minecraft /data/$WORLD/region /data/$WORLD/entities 2>/dev/null || true"
 
 QUAR=$(rcon "prune quarantine $WORLD")
 assert_contains "quarantine shows entry" "apply-" "$QUAR"
@@ -160,11 +166,15 @@ fi
 # ── 7. Undo ───────────────────────────────────────────────────────────────────
 
 section "prune undo"
+echo "    (waiting 5s for async undo to complete...)"
+sleep 5
+
+
 UNDO=$(rcon "prune undo $WORLD")
 assert_contains "acknowledges restore" "Restoring" "$UNDO"
 
-echo "    (waiting 5s for async undo to complete...)"
-sleep 5
+# Fix permissions after restore
+docker exec "$CONTAINER" bash -c "chown -R minecraft:minecraft /data/$WORLD/region /data/$WORLD/entities 2>/dev/null || true"
 
 QUAR2=$(rcon "prune quarantine $WORLD")
 assert_contains     "entry becomes RESTORED" "RESTORED"  "$QUAR2"

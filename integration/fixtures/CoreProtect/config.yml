@@ -1,0 +1,4 @@
+# CoreProtect Community Edition — e2e test configuration
+# project_branch is required by CE to acknowledge this is not the commercial build.
+# WorldPrune queries the SQLite database directly, so api.enabled is not required.
+project_branch: development

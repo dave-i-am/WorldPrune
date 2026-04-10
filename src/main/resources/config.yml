@@ -34,6 +34,14 @@ safety:
   requireConfirmToken: true   # Require /prune apply --confirm <token>
   quarantineOnly: true        # Move to quarantine folder (never hard-delete)
 
+# CoreProtect integration (soft dependency – ignored if CoreProtect is not installed)
+coreprotect:
+  # activityLookbackDays: how far back to check for player block activity.
+  # Any prune-candidate region that CoreProtect records player activity in
+  # during this window will be kept, even if it has no GriefPrevention claim
+  # and no player-placed entity signals.
+  activityLookbackDays: 180
+
 # ┌──────────────────────────────────────────────────────────────────────────┐
 # │  WARNING: setting schedule.enabled to true will cause region files to be  │
 # │  moved to quarantine AUTOMATICALLY and UNATTENDED on the configured       │

@@ -41,6 +41,7 @@ public final class PruneCommand implements TabExecutor {
     private final PurgeService purgeService;
     private final PlanStore planStore;
     private final Map<String, PendingConfirm> pendingConfirms = new ConcurrentHashMap<>();
+    private CoreProtectProvider coreProtectProvider; // optional – set after construction
 
     public PruneCommand(WorldPrunePlugin plugin, PlanService planService, HeuristicService heuristicService, ApplyService applyService, RestoreService restoreService, PurgeService purgeService, PlanStore planStore) {
         this.plugin = plugin;
@@ -50,6 +51,10 @@ public final class PruneCommand implements TabExecutor {
         this.restoreService = restoreService;
         this.purgeService = purgeService;
         this.planStore = planStore;
+    }
+
+    void setCoreProtectProvider(CoreProtectProvider provider) {
+        this.coreProtectProvider = provider;
     }
 
     @Override
@@ -568,6 +573,12 @@ public final class PruneCommand implements TabExecutor {
         sender.sendMessage("§7Claim margin:   §f" + plugin.getConfig().getInt("claims.marginChunks", 5) + " chunks");
         sender.sendMessage("§7Quarantine only:§f" + plugin.getConfig().getBoolean("safety.quarantineOnly", true));
         sender.sendMessage("§7Confirm token:  §f" + plugin.getConfig().getBoolean("safety.requireConfirmToken", true));
+        if (coreProtectProvider != null && coreProtectProvider.isAvailable()) {
+            int days = plugin.getConfig().getInt("coreprotect.activityLookbackDays", 180);
+            sender.sendMessage("§7CoreProtect:    §aactive §7(§f" + days + "§7-day lookback)");
+        } else {
+            sender.sendMessage("§7CoreProtect:    §7inactive");
+        }
         sender.sendMessage(" ");
         try {
             List<PlanStore.PlanMetadata> recent = planStore.listPlans(null);

@@ -11,6 +11,7 @@ public class WorldPrunePlugin extends JavaPlugin {
     private PurgeService purgeService;
     private PlanStore planStore;
     private ScheduleService scheduleService;
+    private CoreProtectProvider coreProtectProvider;
 
     @Override
     public void onEnable() {
@@ -25,6 +26,8 @@ public class WorldPrunePlugin extends JavaPlugin {
         
         this.planStore = new PlanStore(reportsRoot);
         this.heuristicService = new HeuristicService(this, planStore);
+        this.coreProtectProvider = new CoreProtectProvider(getLogger(), getServer().getWorldContainer());
+        heuristicService.setCoreProtectProvider(this.coreProtectProvider);
         this.planService = new PlanService(this, planStore, heuristicService);
         this.applyService = new ApplyService(this, planStore);
         this.restoreService = new RestoreService(this);
@@ -33,6 +36,7 @@ public class WorldPrunePlugin extends JavaPlugin {
         PluginCommand prune = getCommand("prune");
         if (prune != null) {
             PruneCommand command = new PruneCommand(this, planService, heuristicService, applyService, restoreService, purgeService, planStore);
+            command.setCoreProtectProvider(this.coreProtectProvider);
             prune.setExecutor(command);
             prune.setTabCompleter(command);
         } else {
