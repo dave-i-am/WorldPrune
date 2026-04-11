@@ -1,3 +1,10 @@
+## [0.2.1](https://github.com/dave-i-am/WorldPrune/compare/v0.2.0...v0.2.1) (2026-04-11)
+
+
+### Performance Improvements
+
+* strip unused sqlite-jdbc native libs from shaded JAR (14 MB -> 7 MB) ([5967d31](https://github.com/dave-i-am/WorldPrune/commit/5967d31171efae99a51532df3bc8fce7b5a68662))
+
 # [0.2.0](https://github.com/dave-i-am/WorldPrune/compare/v0.1.0...v0.2.0) (2026-04-11)
 
 
