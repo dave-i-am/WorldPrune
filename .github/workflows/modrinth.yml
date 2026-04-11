@@ -28,6 +28,18 @@ jobs:
       - name: Build plugin JAR
         run: ./gradlew shadowJar --no-daemon
 
+      - name: Get release changelog
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ github.event.release.tag_name || inputs.tag }}"
+          {
+            echo "body<<EOF"
+            gh release view "$tag" --json body --jq .body
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Derive game versions from CI matrix
         id: versions
         run: |
@@ -49,12 +61,14 @@ jobs:
           files: build/libs/world-prune-plugin-*.jar
           name: WorldPrune ${{ github.event.release.tag_name || inputs.tag }}
           version: ${{ github.event.release.tag_name || inputs.tag }}
-          changelog: ${{ github.event.release.body || '' }}
+          changelog: ${{ steps.release.outputs.body }}
           version-type: release
           loaders: spigot, paper, bukkit
 
       - name: Update Modrinth project description
         run: |
+          curl -sf "https://raw.githubusercontent.com/${{ github.repository }}/main/modrinth-description.md" \
+            -o modrinth-description.md
           body=$(jq -Rs '.' modrinth-description.md)
           curl -sf -X PATCH "https://api.modrinth.com/v2/project/worldprune" \
             -H "Authorization: ${{ secrets.MODRINTH_TOKEN }}" \
