@@ -143,6 +143,7 @@ tasks.register<Exec>("integrationTest") {
         "MINECRAFT_CONTAINER" to mcContainer,
         "MINECRAFT_WORLD"     to mcWorld
     ))
+    finalizedBy("serverStop")
 }
 
 tasks.register<Exec>("seed") {
@@ -174,3 +175,11 @@ tasks.named("deploy")          { mustRunAfter("serverStart") }
 tasks.named("serverReload")    { mustRunAfter("deploy") }
 tasks.named("seed")            { mustRunAfter("serverReload") }
 tasks.named("integrationTest") { mustRunAfter("seed") }
+
+// ── Developer setup ───────────────────────────────────────────────────────────
+tasks.register<Exec>("installHooks") {
+    description = "Point git core.hooksPath at .githooks/ and chmod the pre-commit hook"
+    group = "setup"
+    commandLine("bash", "-c",
+        "git config core.hooksPath .githooks && chmod +x .githooks/pre-commit && echo 'pre-commit hook installed.'")
+}

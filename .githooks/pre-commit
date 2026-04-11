@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# .githooks/pre-commit
+# Enforces the AGENTS.md "test locally first" rule before every commit.
+# Always runs the full integration suite (which includes unit tests via :build).
+#
+# Install once: ./gradlew installHooks
+
+set -euo pipefail
+
+echo "[pre-commit] Running ./gradlew integration..."
+
+if ! ./gradlew integration --no-daemon; then
+    echo ""
+    echo "[pre-commit] BLOCKED: integration suite failed. Fix the tests before committing."
+    exit 1
+fi
+
+echo "[pre-commit] All tests passed — proceeding with commit."

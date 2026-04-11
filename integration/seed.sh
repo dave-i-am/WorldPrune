@@ -22,7 +22,7 @@ WORLD="${MINECRAFT_WORLD:-world}"
 # ── 1. Far-from-spawn prune candidates ───────────────────────────────────────
 # r.100.100 / r.101.100 are 51 km from spawn — no claims, no entity signals.
 echo "▶ Seeding far-from-spawn prune-candidate regions..."
-docker exec "$CONTAINER" python3 -c "
+docker exec -u minecraft "$CONTAINER" python3 -c "
 import os
 zeros = b'\\x00' * 8192
 world = '${WORLD}'
@@ -41,7 +41,7 @@ for d in ('region', 'entities'):
 # r.0.0 / r.1.0 are blank files; CP activity will be seeded only into r.0.0
 # so that WorldPrune rescues it while r.1.0 stays as a prune candidate.
 echo "▶ Seeding CoreProtect fixture regions (r.0.0, r.1.0)..."
-docker exec "$CONTAINER" python3 -c "
+docker exec -u minecraft "$CONTAINER" python3 -c "
 import os
 zeros = b'\\x00' * 8192
 world = '${WORLD}'
