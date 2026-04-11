@@ -346,55 +346,9 @@ public final class HeuristicService {
             }
         }
 
-        Set<String> rescuedRegions = findCoreProtectActiveRegions(worldName, candidates, lookbackDays);
-        if (rescuedRegions != null) {
-            return applyRescuedRegions(keep, prune, rescuedRegions);
-        }
-
-        int rescued = 0;
-        for (Map.Entry<String, int[]> entry : candidates.entrySet()) {
-            int[] coords = entry.getValue();
-            if (coreProtectProvider.hasRecentActivity(worldName, coords[0], coords[1], lookbackDays)) {
-                keep.add(entry.getKey());
-                prune.remove(entry.getKey());
-                rescued++;
-            }
-        }
-        return rescued;
-    }
-
-    /**
-     * Optional batch-optimisation path: attempts to call
-     * {@code CoreProtectProvider.findRegionsWithRecentActivity()} via reflection.
-     *
-     * <p>This method does not exist in the standard {@link CoreProtectProvider}
-     * implementation — it is an extension point for subclasses or alternative
-     * providers that can check multiple regions in a single DB connection.
-     * If the method is absent (the common case), {@link ReflectiveOperationException}
-     * is swallowed and {@code null} is returned so the caller falls back to
-     * issuing one {@link CoreProtectProvider#hasRecentActivity} call per region.
-     *
-     * @return a set of region filenames that have recent activity, or
-     *         {@code null} if the batch method is unavailable
-     */
-    private Set<String> findCoreProtectActiveRegions(String worldName, Map<String, int[]> candidates, int lookbackDays) {
-        try {
-            Object result = coreProtectProvider.getClass()
-                    .getMethod("findRegionsWithRecentActivity", String.class, Map.class, int.class)
-                    .invoke(coreProtectProvider, worldName, candidates, lookbackDays);
-            if (!(result instanceof Set<?> rawSet)) {
-                return null;
-            }
-            Set<String> activeRegions = new HashSet<>();
-            for (Object value : rawSet) {
-                if (value instanceof String regionFile && candidates.containsKey(regionFile)) {
-                    activeRegions.add(regionFile);
-                }
-            }
-            return activeRegions;
-        } catch (ReflectiveOperationException | SecurityException e) {
-            return null;
-        }
+        Set<String> active = coreProtectProvider.findRegionsWithRecentActivity(
+                worldName, candidates, lookbackDays);
+        return applyRescuedRegions(keep, prune, active);
     }
 
     private int applyRescuedRegions(Set<String> keep, Set<String> prune, Set<String> rescuedRegions) {

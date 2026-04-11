@@ -5,6 +5,9 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 import java.util.logging.Logger;
 
 /**
@@ -119,6 +122,57 @@ class CoreProtectProvider {
      * so that a corrupt, locked, or unreadable DB never causes active regions to
      * be pruned.  A WARNING is logged whenever the fallback is triggered.
      */
+    /**
+     * Checks multiple regions in a single DB connection.
+     *
+     * <p>Executes the same per-region query as {@link #hasRecentActivity} but
+     * reuses one {@link Connection} and one {@link PreparedStatement} across
+     * all candidates, avoiding the per-call connection overhead of the single
+     * variant.
+     *
+     * <p>Fail-safe: if any exception occurs the entire candidate set is returned
+     * (treat-as-active), consistent with the single-region behaviour.
+     *
+     * @param worldName    CoreProtect world name
+     * @param candidates   map of region filename → {@code [regionX, regionZ]}
+     * @param lookbackDays activity window in days
+     * @return subset of {@code candidates} keys that have recent activity
+     */
+    Set<String> findRegionsWithRecentActivity(
+            String worldName, Map<String, int[]> candidates, int lookbackDays) {
+        Set<String> active = new HashSet<>();
+        if (!isAvailable() || candidates.isEmpty()) {
+            return active;
+        }
+        long since = System.currentTimeMillis() / 1000L - (long) lookbackDays * 86400;
+        try (Connection conn = DriverManager.getConnection(
+                     "jdbc:sqlite:" + dbFile.getAbsolutePath());
+             PreparedStatement ps = conn.prepareStatement(QUERY)) {
+            ps.setString(1, worldName);
+            ps.setLong(2, since);
+            for (Map.Entry<String, int[]> entry : candidates.entrySet()) {
+                int[] coords = entry.getValue();
+                int minX = coords[0] * 512;
+                int minZ = coords[1] * 512;
+                ps.setInt(3, minX);
+                ps.setInt(4, minX + 511);
+                ps.setInt(5, minZ);
+                ps.setInt(6, minZ + 511);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        active.add(entry.getKey());
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.warning("[WorldPrune] CoreProtect batch query error for "
+                    + candidates.size() + " regions in world '" + worldName
+                    + "' — treating all as active (fail-safe): " + e.getMessage());
+            return new HashSet<>(candidates.keySet());
+        }
+        return active;
+    }
+
     boolean hasRecentActivity(String worldName, int regionX, int regionZ, int lookbackDays) {
         if (!isAvailable()) return false;
         try (Connection conn = DriverManager.getConnection(
