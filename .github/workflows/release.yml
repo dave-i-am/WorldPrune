@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 0          # full history so semantic-release can read all commits
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Java 21
@@ -39,5 +39,8 @@ jobs:
 
       - name: Run semantic-release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Use RELEASE_PAT if set (needed when branch protection blocks GITHUB_TOKEN
+          # from pushing back to main). Create a fine-grained PAT with Contents:write
+          # and store it as a repository secret named RELEASE_PAT.
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
         run: npx semantic-release
