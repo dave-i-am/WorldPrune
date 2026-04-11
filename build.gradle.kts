@@ -78,22 +78,31 @@ val containerJar = "/data/plugins/world-prune-plugin-${project.version}.jar"
 tasks.register<Exec>("serverStart") {
     description = "Start the test container via docker compose (creates it on first run)"
     group = "minecraft"
-    // docker compose up -d is idempotent: no-op if already running, starts if stopped,
-    // creates+starts if absent.  On first start itzg will download MODRINTH_PROJECTS
-    // (e.g. CoreProtect) before launching the server, so we wait longer in that case.
     commandLine("bash", "-c", """
         if docker ps -q -f name=^/$mcContainer$ | grep -q .; then
           echo "$mcContainer is already running."
         else
-          echo "Starting $mcContainer via docker compose..."          # Pre-seed CoreProtect CE config so it starts on first load.
-          # CE requires project_branch=development to acknowledge it is not the
-          # commercial build. We copy rather than bind-mount so CP can freely
-          # rewrite its config without dirtying the repo fixture.
-          # Note: api.enabled is NOT required — WorldPrune queries the SQLite DB directly.
+          echo "Starting $mcContainer via docker compose..."
+          # Pre-seed CoreProtect CE config so it starts on first load.
+          # CE requires project_branch=development. We copy rather than bind-mount
+          # so CP can freely rewrite its config without dirtying the repo fixture.
           mkdir -p $mcDataDir/plugins/CoreProtect
-          cp -n integration/fixtures/CoreProtect/config.yml $mcDataDir/plugins/CoreProtect/config.yml || true          MINECRAFT_DATA_DIR=$mcDataDir docker compose up -d
-          echo "Waiting for server to be ready (~60 s, includes Modrinth downloads)..."
-          sleep 60
+          cp -n integration/fixtures/CoreProtect/config.yml $mcDataDir/plugins/CoreProtect/config.yml 2>/dev/null || true
+          MINECRAFT_DATA_DIR=$mcDataDir docker compose up -d
+          # Poll for RCON readiness instead of fixed sleep.
+          # First-start may take 3+ minutes (Paper JAR remap + Modrinth downloads).
+          echo "Waiting for server RCON to be ready (up to 5 min)..."
+          deadline=$(( ${'$'}(date +%s) + 300 ))
+          until docker exec $mcContainer rcon-cli list >/dev/null 2>&1; do
+            if [ ${'$'}(date +%s) -ge ${'$'}deadline ]; then
+              echo "ERROR: server did not become ready within 5 minutes"
+              docker logs --tail 50 $mcContainer
+              exit 1
+            fi
+            printf '.'
+            sleep 5
+          done
+          echo " ready."
         fi
     """.trimIndent())
 }
@@ -136,8 +145,8 @@ tasks.register<Exec>("integrationTest") {
     ))
 }
 
-tasks.register<Exec>("worldSeed") {
-    description = "Create dummy far-from-spawn .mca files in the test world so there are always prune candidates"
+tasks.register<Exec>("seed") {
+    description = "Seed all integration test fixtures (prune-candidate regions + CoreProtect DB)"
     group = "verification"
     commandLine("bash", "integration/seed.sh")
     environment(mapOf(
@@ -146,42 +155,22 @@ tasks.register<Exec>("worldSeed") {
     ))
 }
 
+tasks.register<Exec>("serverStop") {
+    description = "Destroy the test container (always run at end of integration for a clean next start)"
+    group = "minecraft"
+    isIgnoreExitValue = true
+    commandLine("bash", "-c", "MINECRAFT_DATA_DIR=$mcDataDir docker compose down --remove-orphans || true")
+}
+
 tasks.register("integration") {
-    description = "serverStart → deploy → serverReload → worldSeed → integrationTest"
+    description = "Full integration suite: serverStart → deploy → serverReload → seed → integrationTest → serverStop"
     group = "verification"
-    dependsOn("serverStart", "deploy", "serverReload", "worldSeed", "integrationTest")
-}
-tasks.named("deploy")      { mustRunAfter("serverStart") }
-tasks.named("serverReload") { mustRunAfter("deploy") }
-tasks.named("worldSeed")   { mustRunAfter("serverReload") }
-
-// ── CoreProtect integration tests ────────────────────────────────────────────
-
-tasks.register<Exec>("cpSeed") {
-    description = "Seed the CoreProtect DB with fake activity and create dummy .mca fixture files (CoreProtect itself is deployed via MODRINTH_PROJECTS in docker-compose.yml)"
-    group = "verification"
-    commandLine("bash", "integration/cp-seed.sh")
-    environment(mapOf(
-        "MINECRAFT_CONTAINER" to mcContainer,
-        "MINECRAFT_WORLD"     to mcWorld
-    ))
+    dependsOn("serverStart", "deploy", "serverReload", "seed", "integrationTest")
+    finalizedBy("serverStop")
 }
 
-tasks.register<Exec>("integrationTestCP") {
-    description = "Run the CoreProtect integration test suite against the running container"
-    group = "verification"
-    commandLine("bash", "integration/cp-run.sh")
-    environment(mapOf(
-        "MINECRAFT_CONTAINER" to mcContainer,
-        "MINECRAFT_WORLD"     to mcWorld
-    ))
-}
-
-tasks.register("integrationCP") {
-    description = "Full CoreProtect integration test flow: serverStart → deploy → cpSeed → integrationTestCP"
-    group = "verification"
-    dependsOn("serverStart", "deploy", "cpSeed", "integrationTestCP")
-}
-tasks.named("cpSeed")          { mustRunAfter("deploy") }
-tasks.named("integrationTestCP") { mustRunAfter("cpSeed") }
-tasks.named("integrationTest")   { mustRunAfter("worldSeed") }
+// ── Ordering constraints ──────────────────────────────────────────────────────
+tasks.named("deploy")          { mustRunAfter("serverStart") }
+tasks.named("serverReload")    { mustRunAfter("deploy") }
+tasks.named("seed")            { mustRunAfter("serverReload") }
+tasks.named("integrationTest") { mustRunAfter("seed") }

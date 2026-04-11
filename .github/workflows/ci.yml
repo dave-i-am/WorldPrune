@@ -65,28 +65,8 @@ jobs:
       - name: Build plugin JAR (skip unit tests — already ran in build job)
         run: ./gradlew shadowJar --no-daemon
 
-      - name: Start test server (downloads CoreProtect via Modrinth)
-        run: |
-          mkdir -p /tmp/minecraft-data/plugins/CoreProtect
-          cp -n integration/fixtures/CoreProtect/config.yml /tmp/minecraft-data/plugins/CoreProtect/config.yml || true
-          MINECRAFT_DATA_DIR=/tmp/minecraft-data docker compose up -d
-          echo "Waiting 90 s for server first-start + Modrinth downloads..."
-          sleep 90
-        env:
-          MINECRAFT_DATA_DIR: /tmp/minecraft-data
-
-      - name: Deploy plugin and reload
-        run: ./gradlew deploy serverReload --no-daemon
-        env:
-          MINECRAFT_DATA_DIR: /tmp/minecraft-data
-
-      - name: Seed world and run integration tests
-        run: ./gradlew worldSeed integrationTest --no-daemon
-        env:
-          MINECRAFT_DATA_DIR: /tmp/minecraft-data
-
-      - name: Seed CoreProtect and run CP integration tests
-        run: ./gradlew cpSeed integrationTestCP --no-daemon
+      - name: Run integration tests
+        run: ./gradlew integration --no-daemon
         env:
           MINECRAFT_DATA_DIR: /tmp/minecraft-data
 

@@ -10,6 +10,7 @@ set -uo pipefail
 
 CONTAINER="${MINECRAFT_CONTAINER:-paper-test-server}"
 WORLD="${MINECRAFT_WORLD:-world}"
+PLUGIN_DATA="/data/plugins/WorldPrune"
 
 PASS=0
 FAIL=0
@@ -25,9 +26,8 @@ RESET='\033[0m'
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-rcon() {
-    docker exec "$CONTAINER" rcon-cli "$@" 2>&1
-}
+rcon()  { docker exec "$CONTAINER" rcon-cli "$@" 2>&1; }
+dexec() { docker exec "$CONTAINER" "$@" 2>&1; }
 
 pass() { echo -e "  ${GREEN}✓${RESET} $1"; ((PASS++)); }
 
@@ -58,6 +58,28 @@ assert_not_contains() {
 }
 
 section() { echo -e "\n${CYAN}${BOLD}▶ $1${RESET}"; }
+
+# poll_until <desc> <needle> <rcon-command...>
+# Retries the rcon command every 3 s for up to 30 s until needle appears.
+# Records a single pass/fail line directly (runs in parent shell — counters safe).
+# Does NOT return the output; callers should re-query rcon if they need it.
+poll_until() {
+    local desc="$1" needle="$2"; shift 2
+    local deadline=$(( $(date +%s) + 30 )) out
+    while true; do
+        out=$(rcon "$@" 2>&1)
+        if echo "$out" | grep -qF -- "$needle"; then
+            pass "$desc"
+            return 0
+        fi
+        if [[ $(date +%s) -ge $deadline ]]; then
+            fail "$desc — timed out waiting for: $needle"
+            echo -e "       ${YELLOW}last output:${RESET} $(echo "$out" | head -c 200)"
+            return 1
+        fi
+        sleep 3
+    done
+}
 
 # ── Preflight ──────────────────────────────────────────────────────────────────
 
@@ -90,12 +112,10 @@ SCAN=$(rcon "prune scan $WORLD")
 assert_contains "acknowledges scan start"  "Scanning" "$SCAN"
 assert_contains "names the world"          "$WORLD"   "$SCAN"
 
-echo "    (waiting 5s for async scan to complete...)"
-sleep 5
-
+echo "    (waiting for async scan to complete...)"
+poll_until "scan produces a plan entry" "plan-" "prune plans $WORLD"
 PLANS_OUT=$(rcon "prune plans $WORLD")
 PLAN_ID=$(echo "$PLANS_OUT" | grep -oE 'plan-[a-z]+-[0-9]+-[0-9]+' | head -1)
-assert_contains "scan produces a plan entry"        "plan-" "$PLANS_OUT"
 assert_contains "plan list shows world name"        "$WORLD" "$PLANS_OUT"
 assert_contains "plan list shows keep/prune arrows" "↑"     "$PLANS_OUT"
 
@@ -145,16 +165,16 @@ assert_not_contains "no --confirm flag in preview"  "--confirm"            "$APP
 # ── 6. Confirm apply ─────────────────────────────────────────────────────────
 
 section "prune confirm (apply)"
-echo "    (waiting 5s for async apply to complete...)"
-sleep 5
+CONFIRM=$(rcon "prune confirm")
+assert_contains "acknowledges applying" "Applying plan" "$CONFIRM"
 
-
-# Fix permissions after quarantine move (entity/region files)
-docker exec "$CONTAINER" bash -c "chown -R minecraft:minecraft /data/$WORLD/region /data/$WORLD/entities 2>/dev/null || true"
-
+# Poll until quarantine shows an ACTIVE entry (up to 30 s — CI servers run slow)
+poll_until "quarantine shows entry" "apply-" "prune quarantine $WORLD"
 QUAR=$(rcon "prune quarantine $WORLD")
-assert_contains "quarantine shows entry" "apply-" "$QUAR"
-assert_contains "new entry is ACTIVE"    "ACTIVE"  "$QUAR"
+assert_contains "new entry is ACTIVE" "ACTIVE" "$QUAR"
+
+# Fix permissions after quarantine move so Paper can still write entity data
+docker exec "$CONTAINER" bash -c "chown -R minecraft:minecraft /data/$WORLD/region /data/$WORLD/entities 2>/dev/null || true"
 
 APPLY_ID=$(echo "$QUAR" | grep 'ACTIVE' | grep -oE 'apply-[0-9]+-[0-9]+' | head -1)
 if [[ -z "$APPLY_ID" ]]; then
@@ -166,19 +186,16 @@ fi
 # ── 7. Undo ───────────────────────────────────────────────────────────────────
 
 section "prune undo"
-echo "    (waiting 5s for async undo to complete...)"
-sleep 5
-
-
 UNDO=$(rcon "prune undo $WORLD")
 assert_contains "acknowledges restore" "Restoring" "$UNDO"
 
-# Fix permissions after restore
-docker exec "$CONTAINER" bash -c "chown -R minecraft:minecraft /data/$WORLD/region /data/$WORLD/entities 2>/dev/null || true"
-
+# Poll until quarantine shows RESTORED (up to 30 s — CI servers run slow)
+poll_until "entry becomes RESTORED" "RESTORED" "prune quarantine $WORLD"
 QUAR2=$(rcon "prune quarantine $WORLD")
-assert_contains     "entry becomes RESTORED" "RESTORED"  "$QUAR2"
-assert_not_contains "no longer ACTIVE"       "[ACTIVE]"  "$QUAR2"
+assert_not_contains "no longer ACTIVE" "[ACTIVE]" "$QUAR2"
+
+# Fix permissions after restore so Paper can write entity data
+docker exec "$CONTAINER" bash -c "chown -R minecraft:minecraft /data/$WORLD/region /data/$WORLD/entities 2>/dev/null || true"
 
 # ── 8. Drop preview + confirm ─────────────────────────────────────────────────
 
@@ -193,7 +210,7 @@ if [[ -n "$APPLY_ID" ]]; then
     DROP_CONFIRM=$(rcon "prune confirm")
     assert_contains "acknowledges deletion"     "Deleting"       "$DROP_CONFIRM"
 
-    sleep 2
+    sleep 5
     QUAR3=$(rcon "prune quarantine $WORLD")
     assert_not_contains "entry gone after drop" "$APPLY_ID" "$QUAR3"
 else
@@ -219,6 +236,68 @@ assert_contains "shows usage hint"           "/prune scan"        "$UNKNOWN"
 section "prune plan (no args)"
 NO_PLAN=$(rcon "prune plan")
 assert_contains "reports usage error" "Usage: /prune plan" "$NO_PLAN"
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CoreProtect integration assertions
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── 12. CoreProtect status ────────────────────────────────────────────────────
+
+section "prune status — CoreProtect"
+CP_STATUS=$(rcon "prune status")
+assert_contains "status shows CoreProtect line"  "CoreProtect:" "$CP_STATUS"
+assert_contains "CoreProtect is reported active" "active"       "$CP_STATUS"
+
+if ! echo "$CP_STATUS" | grep -qF "active"; then
+    fail "CoreProtect not active — skipping CP rescue assertions"
+else
+
+    # ── 13. Scan with CP rescue ───────────────────────────────────────────────
+
+    section "prune scan (CoreProtect rescue)"
+    CP_SCAN=$(rcon "prune scan $WORLD")
+    assert_contains "CP scan start acknowledged" "Scanning" "$CP_SCAN"
+
+    poll_until "CP scan produced a combined plan" "plan-combined-" "prune plans $WORLD"
+    CP_PLANS=$(rcon "prune plans $WORLD")
+    CP_PLAN_ID=$(echo "$CP_PLANS" | grep -oE 'plan-combined-[0-9]+-[0-9]+' | head -1)
+    assert_contains "plan list shows world" "$WORLD" "$CP_PLANS"
+
+    if [[ -z "$CP_PLAN_ID" ]]; then
+        fail "Could not extract CP plan ID"
+    else
+        echo "    CP Plan ID: $CP_PLAN_ID"
+        CP_REPORT="${PLUGIN_DATA}/reports/${CP_PLAN_ID}/${WORLD}"
+
+        # ── 14. Rescue outcome ────────────────────────────────────────────────
+
+        section "CoreProtect rescue-pass outcome"
+        KEEP_CONTENT=$(dexec  cat "${CP_REPORT}/keep-regions-combined.txt"  2>/dev/null || echo "FILE_NOT_FOUND")
+        PRUNE_CONTENT=$(dexec cat "${CP_REPORT}/prune-candidate-regions.txt" 2>/dev/null || echo "FILE_NOT_FOUND")
+
+        assert_contains     "keep-regions file readable"       "r."        "$KEEP_CONTENT"
+        assert_contains     "r.0.0 rescued into keep set"      "r.0.0.mca" "$KEEP_CONTENT"
+        assert_not_contains "r.0.0 not a prune candidate"      "r.0.0.mca" "$PRUNE_CONTENT"
+        assert_contains     "prune-candidates file readable"    "r."        "$PRUNE_CONTENT"
+        assert_contains     "r.1.0 remains a prune candidate"  "r.1.0.mca" "$PRUNE_CONTENT"
+        assert_not_contains "r.1.0 not in keep set"            "r.1.0.mca" "$KEEP_CONTENT"
+
+        # ── 15. summary.json ─────────────────────────────────────────────────
+
+        section "summary.json — coreprotectRescued"
+        SUMMARY=$(dexec cat "${CP_REPORT}/summary.json" 2>/dev/null || echo "FILE_NOT_FOUND")
+        assert_contains     "summary.json readable"        "source"                      "$SUMMARY"
+        assert_contains     "coreprotectRescued present"   "coreprotectRescued"          "$SUMMARY"
+        assert_not_contains "rescued count non-zero"       '"coreprotectRescued": 0'    "$SUMMARY"
+
+        # ── 16. Plan show ─────────────────────────────────────────────────────
+
+        section "prune plan (CP plan)"
+        CP_SHOW=$(rcon "prune plan $CP_PLAN_ID")
+        assert_contains "CP plan shows plan ID"  "$CP_PLAN_ID" "$CP_SHOW"
+        assert_contains "CP plan shows Keep"     "Keep:"       "$CP_SHOW"
+    fi
+fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 
