@@ -70,6 +70,7 @@ All commands are read-only during planning phases. Destructive actions require a
 | [WorldPrunePlugin.java](src/main/java/dev/minecraft/prune/WorldPrunePlugin.java) | Plugin bootstrap. Initializes all services, registers command, warns on stale locks at startup.
 | [build.gradle.kts](build.gradle.kts) | Gradle build config — Java 21 + Spigot API 1.21.1 (runs on Spigot, Paper, and all forks). Shadow plugin (`com.gradleup.shadow`) shades `sqlite-jdbc` into the output JAR. |
 | [config.yml](src/main/resources/config.yml) | Runtime defaults. | Claims path, keepRules thresholds, margin chunks. |
+| [modrinth-description.md](modrinth-description.md) | Modrinth project description. Automatically pushed to Modrinth on every release via `PATCH /v2/project/worldprune` in `modrinth.yml`. Edit this file to update what players see on the Modrinth project page. |
 
 ## Conventional Commits
 
@@ -125,22 +126,24 @@ Releases are **fully automated** via [semantic-release](https://semantic-release
    - Builds the shadow JAR (`./gradlew shadowJar`).
    - Commits those changes back to `main` with `[skip ci]`.
    - Creates a GitHub Release with the JAR attached.
-3. The GitHub Release `published` event triggers `.github/workflows/modrinth.yml`,
-   which publishes the JAR to Modrinth using `Kir-Antipov/mc-publish`.
+3. The GitHub Release `published` event triggers `.github/workflows/modrinth.yml`, which:
+   - Publishes the JAR to Modrinth using `Kir-Antipov/mc-publish`.
+   - Derives the supported game versions automatically from the `spigot-version` matrix in `ci.yml` — no manual list to maintain.
+   - Updates the Modrinth project description from [`modrinth-description.md`](modrinth-description.md).
+
+### Updating the Modrinth project description
+Edit [`modrinth-description.md`](modrinth-description.md) and commit the change. The next release will push the updated description to Modrinth automatically via `PATCH /v2/project/worldprune`.
 
 ### Required GitHub configuration (one-time, repo settings)
 | Type | Name | Value |
 |------|------|-------|
-| Secret | `MODRINTH_TOKEN` | Modrinth API token with *Create versions* scope |
-| Variable | `MODRINTH_PROJECT_ID` | Modrinth project ID or slug (e.g. `worldprune`) |
-| Variable | `MODRINTH_GAME_VERSIONS` | Comma-separated MC versions (e.g. `1.20.1,1.21.1,1.21.4`) |
-| Variable | `MODRINTH_LOADERS` | Comma-separated loaders (e.g. `spigot,paper,purpur,folia`) |
+| Secret | `MODRINTH_TOKEN` | Modrinth API token with *Create versions* and *Edit projects* scope |
 
 ### Bootstrapping the first automated release
 On the first merge to `main` after adopting this workflow, create an annotated tag for the current version **before** pushing, so semantic-release has a baseline:
 ```bash
-git tag -a v0.2.0 -m "chore(release): 0.2.0 [skip ci]"
-git push origin v0.2.0
+git tag -a v0.1.0 -m "chore(release): 0.1.0 [skip ci]"
+git push origin v0.1.0
 ```
 Semantic-release will then only consider commits **after** that tag.
 
