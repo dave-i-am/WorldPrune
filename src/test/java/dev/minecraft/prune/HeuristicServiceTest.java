@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.zip.GZIPOutputStream;
 
@@ -325,12 +326,19 @@ class HeuristicServiceTest {
 
     // ── CoreProtect rescue pass ───────────────────────────────────────────────
 
-    /** Convenience: a CoreProtectProvider whose hasRecentActivity always returns the given value. */
+    /**
+     * Convenience: a CoreProtectProvider whose findRegionsWithRecentActivity
+     * returns all candidates (returnValue=true) or none (returnValue=false).
+     */
     private static CoreProtectProvider stubbedProvider(boolean returnValue) {
         return new CoreProtectProvider(true) {
             @Override
-            boolean hasRecentActivity(String worldName, int rx, int rz, int days) {
-                return returnValue;
+            Set<String> findRegionsWithRecentActivity(
+                    String worldName, Map<String, int[]> candidates, int lookbackDays) {
+                if (!returnValue) {
+                    return new HashSet<>();
+                }
+                return new HashSet<>(candidates.keySet());
             }
         };
     }

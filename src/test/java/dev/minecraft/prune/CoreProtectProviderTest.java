@@ -9,8 +9,13 @@ import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
 import java.util.logging.Logger;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -106,6 +111,55 @@ class CoreProtectProviderTest {
         var p = new CoreProtectProvider(LOG, corrupt, false);
         assertTrue(p.hasRecentActivity("world", 0, 0, 30),
                 "Corrupt DB should return true (fail-safe: conservative keep), not throw");
+    }
+
+    // ── findRegionsWithRecentActivity ─────────────────────────────────────
+
+    @Test
+    void batchFind_returnsEmptyWhenUnavailable() {
+        var p = new CoreProtectProvider(LOG, tmp.resolve("no.db").toFile(), false);
+        Map<String, int[]> candidates = Map.of("r.0.0.mca", new int[]{0, 0});
+        assertEquals(new HashSet<>(),
+                p.findRegionsWithRecentActivity("world", candidates, 30));
+    }
+
+    @Test
+    void batchFind_returnsEmptyWhenNoCandidates() throws Exception {
+        File db = createSchema(tmp);
+        var p = new CoreProtectProvider(LOG, db, false);
+        assertEquals(new HashSet<>(),
+                p.findRegionsWithRecentActivity("world", new LinkedHashMap<>(), 30));
+    }
+
+    @Test
+    void batchFind_detectsActiveRegions() throws Exception {
+        File db = createSchema(tmp);
+        seedBlock(db, "world", 256,  64, 256, 1);   // r.0.0 — recent
+        seedBlock(db, "world", 768,  64, 256, 1);   // r.1.0 — recent
+        // r.2.0 has no activity
+        var p = new CoreProtectProvider(LOG, db, false);
+        Map<String, int[]> candidates = new LinkedHashMap<>();
+        candidates.put("r.0.0.mca", new int[]{0, 0});
+        candidates.put("r.1.0.mca", new int[]{1, 0});
+        candidates.put("r.2.0.mca", new int[]{2, 0});
+        Set<String> active = p.findRegionsWithRecentActivity("world", candidates, 30);
+        assertTrue(active.contains("r.0.0.mca"), "r.0.0 has activity");
+        assertTrue(active.contains("r.1.0.mca"), "r.1.0 has activity");
+        assertFalse(active.contains("r.2.0.mca"), "r.2.0 has no activity");
+    }
+
+    @Test
+    void batchFind_failSafeOnCorruptDb() throws Exception {
+        File corrupt = tmp.resolve("corrupt2.db").toFile();
+        assertTrue(corrupt.createNewFile());
+        var p = new CoreProtectProvider(LOG, corrupt, false);
+        Map<String, int[]> candidates = new LinkedHashMap<>();
+        candidates.put("r.0.0.mca", new int[]{0, 0});
+        candidates.put("r.1.0.mca", new int[]{1, 0});
+        // Corrupt DB → all candidates returned (fail-safe)
+        Set<String> active = p.findRegionsWithRecentActivity("world", candidates, 30);
+        assertEquals(candidates.keySet(), active,
+                "Corrupt DB should return all candidates (fail-safe)");
     }
 
     @Test
