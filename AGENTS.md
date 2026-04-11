@@ -2,6 +2,11 @@
 
 This file is the primary reference for LLM agents working on this codebase. Read it before making changes.
 
+## Non-Negotiable Rules
+
+1. **Test locally before committing or pushing.** Always run the relevant test suite against the actual code before sending changes to the remote. For unit test changes: `./gradlew test`. For anything touching integration scripts, Gradle tasks, plugin behaviour, or CI: `./gradlew integration`. If it doesn't pass locally, do not push.
+2. **Never push a fix for a CI failure without first reproducing the fix locally.**
+
 ## Quick Start
 - **Build**: `./gradlew build`
 - **Output JAR**: `build/libs/world-prune-plugin-0.1.0.jar`
@@ -190,44 +195,36 @@ Configurable env vars: `MINECRAFT_CONTAINER`, `MINECRAFT_WORLD`, `MINECRAFT_DATA
 | Command | What it does |
 |---|---|
 | `./gradlew build` | Compile + unit tests |
-| `./gradlew serverStart` | Start stopped container or create it fresh |
+| `./gradlew serverStart` | Start stopped container or create it fresh (polls RCON, up to 5 min) |
 | `./gradlew deploy` | Build then copy JAR into container |
 | `./gradlew serverReload` | `reload confirm` via rcon |
-| `./gradlew integration` | serverStart → deploy → serverReload → worldSeed → integrationTest |
+| `./gradlew seed` | Create all fixture `.mca` files + seed CoreProtect DB |
 | `./gradlew integrationTest` | Run `integration/run.sh` against an already-running container |
-| `./gradlew cpSeed` | Seed CP DB with fake activity + create test .mca files (CP itself comes via Modrinth on container start) |
-| `./gradlew integrationTestCP` | Run `integration/cp-run.sh` against an already-running container |
-| `./gradlew integrationCP` | serverStart → deploy → cpSeed → integrationTestCP |
+| `./gradlew integration` | Full suite: serverStart → deploy → serverReload → seed → integrationTest → serverStop |
+| `./gradlew serverStop` | Destroy the container (`docker compose down`) |
 | `./gradlew rcon -Pargs="prune status"` | One-off rcon command |
 | `./gradlew logs` | Tail container logs |
 
 ```bash
-# Full flow (creates/starts container if needed, then tests):
+# Full flow (creates/starts container if needed, runs all tests, stops container):
 ./gradlew integration
 
 # Run tests against an already-running container (no rebuild):
 MINECRAFT_CONTAINER=my-server MINECRAFT_WORLD=survival ./gradlew integrationTest
 ```
 
-**Test script** — `integration/run.sh` covers (47 assertions):
+**Test script** — `integration/run.sh` covers 65 assertions (47 standard + 18 CoreProtect):
 - `status`, `scan`, `plans`, `plan <id>`
-- `apply` preview (no token shown) + staged `confirm`
-- quarantine listing (ACTIVE state)
-- `undo` + quarantine listing (RESTORED state)
-- `drop` preview + staged `confirm` + entry gone
-- `confirm` with nothing pending
-- Unknown subcommand and missing argument errors
+- `apply` preview + staged `confirm`
+- quarantine listing (ACTIVE), `undo` (RESTORED), `drop` + confirm + gone
+- `confirm` with nothing pending; unknown subcommand; missing arg
+- CoreProtect: status shows active, scan rescues r.0.0, prunes r.1.0
+- `summary.json` contains non-zero `coreprotectRescued`
 
-**CoreProtect test script** — `integration/cp-run.sh` covers (18 assertions):
-- `/prune status` shows `CoreProtect: active`
-- Scan produces a combined plan
-- `keep-regions-combined.txt` contains `r.0.0.mca` (rescued by CP)
-- `prune-candidate-regions.txt` contains `r.1.0.mca` (no CP activity)
-- `r.0.0.mca` absent from prune candidates; `r.1.0.mca` absent from keep set
-- `summary.json` contains `coreprotectRescued` with a non-zero value
-- `/prune plan <id>` reflects the keep count
-
-Setup: `integration/cp-seed.sh` seeds the CoreProtect SQLite DB with a block-placement event at (256, 64, 256) (inside region `r.0.0`), and creates empty `.mca` fixture files for both `r.0.0` and `r.1.0`. CoreProtect itself is downloaded automatically via `MODRINTH_PROJECTS` in `docker-compose.yml`.
+**Seed script** — `integration/seed.sh` creates all fixtures in one pass:
+- `r.100.100.mca`, `r.101.100.mca` — far-from-spawn prune candidates
+- `r.0.0.mca`, `r.1.0.mca` — CoreProtect fixture regions
+- Seeds CoreProtect DB with block activity at (256, 64, 256) → rescues r.0.0
 
 ### Unit Testing
 - Run with `./gradlew test`.
