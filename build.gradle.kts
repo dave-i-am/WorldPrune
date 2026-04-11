@@ -80,6 +80,16 @@ tasks.shadowJar {
     archiveClassifier.set("")
     relocate("org.sqlite", "dev.minecraft.prune.shadow.sqlite")
     mergeServiceFiles()
+    // sqlite-jdbc ships native libs for every platform; trim the implausible ones.
+    // Java 17+ has no 32-bit JVM, so x86 natives can never load on a modern server.
+    exclude("**/native/FreeBSD/**")
+    exclude("**/native/Linux-Android/**")
+    exclude("**/native/Linux/ppc64/**")
+    exclude("**/native/Linux/riscv64/**")
+    exclude("**/native/Linux/x86/**")
+    exclude("**/native/Linux-Musl/x86/**")
+    exclude("**/native/Windows/x86/**")
+    exclude("**/native/Windows/armv7/**")
 }
 tasks.named("assemble") {
     dependsOn(tasks.shadowJar)
