@@ -1,7 +1,9 @@
 plugins {
     java
     jacoco
+    checkstyle
     id("com.gradleup.shadow") version "9.0.0-beta4"
+    id("com.github.spotbugs") version "6.1.11"
 }
 
 group = "dev.minecraft.prune"
@@ -51,6 +53,22 @@ tasks.jacocoTestReport {
         xml.required.set(true)
         html.required.set(true)
     }
+}
+
+checkstyle {
+    toolVersion = "10.21.4"
+    configFile = file("config/checkstyle/checkstyle.xml")
+    isIgnoreFailures = false
+}
+
+spotbugs {
+    toolVersion = "4.9.3"
+    excludeFilter = file("config/spotbugs/exclude.xml")
+    ignoreFailures = false
+}
+tasks.withType<com.github.spotbugs.snom.SpotBugsTask> {
+    reports.create("html") { required = true }
+    reports.create("xml")  { required = false }
 }
 
 // sqlite-jdbc shaded into the plugin JAR so servers don't need to provide it.

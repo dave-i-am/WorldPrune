@@ -304,8 +304,9 @@ public final class PruneCommand implements TabExecutor {
             if (shown == 0) return;
             sender.sendMessage("§7Sample prunable regions:");
             for (int i = 0; i < shown; i++) sender.sendMessage("  §f" + lines.get(i));
-            if (lines.size() > shown)
+            if (lines.size() > shown) {
                 sender.sendMessage("  §7... and §f" + (lines.size() - shown) + " §7more (see report)");
+            }
         } catch (IOException ignored) {}
     }
 
@@ -611,8 +612,9 @@ public final class PruneCommand implements TabExecutor {
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
-        if (args.length == 1)
+        if (args.length == 1) {
             return List.of("scan", "plans", "plan", "apply", "confirm", "undo", "quarantine", "drop", "map", "status");
+        }
 
         String sub = args[0].toLowerCase(Locale.ROOT);
         List<String> worldNames = new ArrayList<>();

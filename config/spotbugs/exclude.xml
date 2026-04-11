@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SpotBugs exclusion filter for WorldPrune.
+  Add suppressions here only with a comment explaining why.
+-->
+<FindBugsFilter>
+
+    <!-- Test classes: SpotBugs findings in tests are rarely actionable
+         and mock/fixture patterns generate many false positives. -->
+    <Match>
+        <Class name="~.*Test.*"/>
+    </Match>
+
+    <!-- Minecraft §-prefixed string literals are not localised text;
+         HardCodedStringLiteral does not apply here. -->
+    <Match>
+        <Bug pattern="HSC_HUGE_SHARED_STRING_CONSTANT"/>
+    </Match>
+
+    <!-- Bukkit/Paper API objects (World, Player, etc.) are managed by
+         the server runtime; we must not close them. Suppress OBL_UNSATISFIED_OBLIGATION
+         for fields of those types. -->
+    <Match>
+        <Bug pattern="OBL_UNSATISFIED_OBLIGATION_EXCEPTION_EDGE"/>
+    </Match>
+
+    <!--
+        Bukkit plugin architecture requires storing/returning plugin service references.
+        These are singletons managed by the plugin lifecycle — not real exposure risks.
+    -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+    </Match>
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
+
+    <!--
+        Bukkit/Paper API methods (getWorldFolder, getWorlds, etc.) are annotated
+        @NotNull at runtime but SpotBugs cannot verify this statically.
+    -->
+    <Match>
+        <Bug pattern="NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE"/>
+    </Match>
+
+    <!--
+        Intentional broad catch blocks used as conservative safety nets:
+        - HeuristicService: corrupt chunk data can throw arbitrary runtime exceptions;
+          we conservatively keep the region.
+        - ClaimBoundsProvider: malformed claim files are silently skipped.
+    -->
+    <Match>
+        <Bug pattern="REC_CATCH_EXCEPTION"/>
+    </Match>
+    <Match>
+        <Bug pattern="DE_MIGHT_IGNORE"/>
+    </Match>
+
+</FindBugsFilter>

@@ -16,14 +16,14 @@ public class WorldPrunePlugin extends JavaPlugin {
     @Override
     public void onEnable() {
         saveDefaultConfig();
-        
+
         java.nio.file.Path reportsRoot = getDataFolder().toPath().resolve("reports");
         try {
             java.nio.file.Files.createDirectories(reportsRoot);
         } catch (Exception e) {
             getLogger().severe("Failed to create reports directory: " + e);
         }
-        
+
         this.planStore = new PlanStore(reportsRoot);
         this.heuristicService = new HeuristicService(this, planStore);
         this.coreProtectProvider = new CoreProtectProvider(getLogger(), getServer().getWorldContainer());
