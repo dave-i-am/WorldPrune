@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# .githooks/commit-msg
+# Validates commit messages against Conventional Commits spec.
+# Requires Node + npx available (run: npm install once after cloning).
+#
+# Install once: ./gradlew installHooks
+
+set -euo pipefail
+
+if ! command -v npx &>/dev/null; then
+    echo "[commit-msg] WARNING: npx not found — skipping commitlint."
+    echo "  Run 'npm install' once after cloning to enable commit linting."
+    exit 0
+fi
+
+npx --no -- commitlint --edit "$1"

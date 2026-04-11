@@ -196,8 +196,8 @@ tasks.named("integrationTest") { mustRunAfter("seed") }
 
 // ── Developer setup ───────────────────────────────────────────────────────────
 tasks.register<Exec>("installHooks") {
-    description = "Point git core.hooksPath at .githooks/ and chmod the pre-commit hook"
+    description = "Point git core.hooksPath at .githooks/ and make all hooks executable"
     group = "setup"
     commandLine("bash", "-c",
-        "git config core.hooksPath .githooks && chmod +x .githooks/pre-commit && echo 'pre-commit hook installed.'")
+        "git config core.hooksPath .githooks && chmod +x .githooks/pre-commit .githooks/commit-msg && echo 'Hooks installed: pre-commit, commit-msg'")
 }
