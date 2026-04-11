@@ -31,11 +31,13 @@ jobs:
       - name: Derive game versions from CI matrix
         id: versions
         run: |
-          versions=$(grep '^\s*- "[0-9]' .github/workflows/ci.yml \
-            | sed 's/.*"\(.*\)"/\1/' \
-            | sed 's/-R[0-9.]*-SNAPSHOT//' \
-            | tr '\n' ',' | sed 's/,$//')
-          echo "list=$versions" >> "$GITHUB_OUTPUT"
+          {
+            echo "list<<EOF"
+            grep '^\s*- "[0-9]' .github/workflows/ci.yml \
+              | sed 's/.*"\(.*\)"/\1/' \
+              | sed 's/-R[0-9.]*-SNAPSHOT//'
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Publish to Modrinth
         uses: Kir-Antipov/mc-publish@v3.3
