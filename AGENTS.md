@@ -6,10 +6,11 @@ This file is the primary reference for LLM agents working on this codebase. Read
 
 1. **Test locally before committing or pushing.** Always run the relevant test suite against the actual code before sending changes to the remote. For unit test changes: `./gradlew test`. For anything touching integration scripts, Gradle tasks, plugin behaviour, or CI: `./gradlew integration`. If it doesn't pass locally, do not push.
 2. **Never push a fix for a CI failure without first reproducing the fix locally.**
+3. **Every commit must follow [Conventional Commits](https://www.conventionalcommits.org/).** The commit message format drives automatic semantic versioning on merge to `main`. The `commit-msg` hook enforces this locally; CI enforces it on PRs. See [Conventional Commits](#conventional-commits) for the required format.
 
 ## Quick Start
 - **Build**: `./gradlew build`
-- **Output JAR**: `build/libs/world-prune-plugin-0.1.0.jar`
+- **Output JAR**: `build/libs/world-prune-plugin-<version>.jar`
 - **Package**: `dev.minecraft.prune`
 - **Main class**: `WorldPrunePlugin`
 - **Config**: `src/main/resources/config.yml`
@@ -70,11 +71,36 @@ All commands are read-only during planning phases. Destructive actions require a
 | [build.gradle.kts](build.gradle.kts) | Gradle build config — Java 21 + Spigot API 1.21.1 (runs on Spigot, Paper, and all forks). Shadow plugin (`com.gradleup.shadow`) shades `sqlite-jdbc` into the output JAR. |
 | [config.yml](src/main/resources/config.yml) | Runtime defaults. | Claims path, keepRules thresholds, margin chunks. |
 
+## Conventional Commits
+
+All commit messages **must** follow the Conventional Commits spec. semantic-release reads these to determine the version bump and generate the changelog automatically.
+
+| Prefix | Version bump | When to use |
+|--------|-------------|-------------|
+| `feat:` | **minor** (0.x.0) | New user-visible feature |
+| `fix:` | **patch** (0.0.x) | Bug fix |
+| `perf:` | **patch** | Performance improvement |
+| `refactor:`, `chore:`, `ci:`, `docs:`, `test:`, `style:` | none | Internal changes |
+| `feat!:` or `BREAKING CHANGE:` footer | **major** (x.0.0) | Breaking API/config change |
+
+Examples:
+```
+feat: add /prune schedule list command
+fix: seed files as minecraft user to avoid AccessDeniedException
+chore: add Checkstyle + SpotBugs; fix all lint violations
+ci: replace 4-step integration sequence with single ./gradlew integration
+```
+
+Scope is optional but encouraged: `feat(heuristic): add chest-minecart exclusion`.
+
+The `commit-msg` hook validates format locally. Install once: `./gradlew installHooks`.
+
 ## Development Workflow
 
 1. Run `./gradlew build` before and after changes to verify zero errors.
 2. If adding config keys, add defaults to `config.yml`.
 3. Always call `savePlanMetadata()` after generating a plan so it appears in `/prune plans`.
+4. Commit messages must follow Conventional Commits (see above) — this drives the version bump.
 
 ### Async Operations
 - All long-running tasks (planning, heuristic scan, apply/undo) run via `Bukkit.getScheduler().runTaskAsynchronously(plugin, ...)`.
@@ -85,6 +111,44 @@ All commands are read-only during planning phases. Destructive actions require a
 - Catch exceptions in async tasks and log to `plugin.getLogger()`.
 - Always return something to the operator (success or error message).
 - Never crash the server; fail gracefully.
+
+## Release Process
+
+Releases are **fully automated** via [semantic-release](https://semantic-release.gitbook.io/) on every push to `main`.
+
+### How it works
+1. Commits merged to `main` are analysed against Conventional Commits.
+2. If any `feat:` or `fix:` (or higher) commits are present, semantic-release:
+   - Determines the next version (patch / minor / major).
+   - Updates `version = "X.Y.Z"` in `build.gradle.kts`.
+   - Generates / prepends `CHANGELOG.md`.
+   - Builds the shadow JAR (`./gradlew shadowJar`).
+   - Commits those changes back to `main` with `[skip ci]`.
+   - Creates a GitHub Release with the JAR attached.
+3. The GitHub Release `published` event triggers `.github/workflows/modrinth.yml`,
+   which publishes the JAR to Modrinth using `Kir-Antipov/mc-publish`.
+
+### Required GitHub configuration (one-time, repo settings)
+| Type | Name | Value |
+|------|------|-------|
+| Secret | `MODRINTH_TOKEN` | Modrinth API token with *Create versions* scope |
+| Variable | `MODRINTH_PROJECT_ID` | Modrinth project ID or slug (e.g. `worldprune`) |
+| Variable | `MODRINTH_GAME_VERSIONS` | Comma-separated MC versions (e.g. `1.20.1,1.21.1,1.21.4`) |
+| Variable | `MODRINTH_LOADERS` | Comma-separated loaders (e.g. `spigot,paper,purpur,folia`) |
+
+### Bootstrapping the first automated release
+On the first merge to `main` after adopting this workflow, create an annotated tag for the current version **before** pushing, so semantic-release has a baseline:
+```bash
+git tag -a v0.2.0 -m "chore(release): 0.2.0 [skip ci]"
+git push origin v0.2.0
+```
+Semantic-release will then only consider commits **after** that tag.
+
+### Local release tooling setup
+```bash
+npm install           # install semantic-release + commitlint devDependencies
+./gradlew installHooks  # install pre-commit + commit-msg hooks
+```
 
 ## Safety Model
 
