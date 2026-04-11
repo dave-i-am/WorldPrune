@@ -490,11 +490,10 @@ public final class PruneCommand implements TabExecutor {
                 sender.sendMessage("§7  No quarantine directories found.");
             } else {
                 for (PurgeService.ApplyDirInfo info : dirs) {
-                    String status = !info.hasManifest() ? "§eINCOMPLETE§7"
-                                  : info.isRestored()  ? "§aRESTORED§7"
-                                  :                      "§cACTIVE§7";
-                    String files  = info.fileCount() > 0 ? "§f" + info.fileCount() + " §7files" : "§7(manifest only)";
-                    sender.sendMessage("  §f" + info.applyId() + " §7[" + status + "§7]  " + files);
+                    String statusLabel = !info.hasManifest() ? "INCOMPLETE" : info.isRestored() ? "RESTORED" : "ACTIVE";
+                    String lineColor   = !info.hasManifest() ? "§e" : info.isRestored() ? "§a" : "§c";
+                    String files = info.fileCount() > 0 ? info.fileCount() + " files" : "(manifest only)";
+                    sender.sendMessage(lineColor + "  " + info.applyId() + " [" + statusLabel + "]  " + files);
                 }
                 sender.sendMessage(" ");
                 sender.sendMessage("§7To permanently delete: §f/prune drop " + world.getName() + " <apply-id>");
@@ -531,11 +530,12 @@ public final class PruneCommand implements TabExecutor {
                 return;
             }
 
-            String status = !info.hasManifest() ? "§eINCOMPLETE" : info.isRestored() ? "§aRESTORED" : "§cACTIVE";
+            String statusLabel = !info.hasManifest() ? "INCOMPLETE" : info.isRestored() ? "RESTORED" : "ACTIVE";
+            String statusColor = !info.hasManifest() ? "§e" : info.isRestored() ? "§a" : "§c";
             sender.sendMessage("§8§m══════════════════════════════════════");
             sender.sendMessage("§c§lDrop Preview: §f" + applyId);
             sender.sendMessage("§7World:  §f" + world.getName());
-            sender.sendMessage("§7Status: " + status);
+            sender.sendMessage("§7Status: " + statusColor + statusLabel);
             sender.sendMessage("§7Files:  §f" + info.fileCount());
             sender.sendMessage(" ");
             sender.sendMessage("§c§lWARNING: This is permanent and cannot be undone.");
