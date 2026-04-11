@@ -11,7 +11,8 @@ import java.sql.PreparedStatement;
 import java.sql.Statement;
 import java.util.logging.Logger;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Unit tests for {@link CoreProtectProvider}.

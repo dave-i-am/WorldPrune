@@ -54,9 +54,11 @@ final class PruneMapRenderer extends MapRenderer {
         rendered = true;
 
         // Background
-        for (int x = 0; x < 128; x++)
-            for (int y = 0; y < 128; y++)
+        for (int x = 0; x < 128; x++) {
+            for (int y = 0; y < 128; y++) {
                 canvas.setPixel(x, y, COL_BG);
+            }
+        }
 
         if (regions.isEmpty()) return;
 
@@ -83,8 +85,9 @@ final class PruneMapRenderer extends MapRenderer {
 
         // Fast lookup: packed long key → status
         Map<Long, Integer> lookup = new HashMap<>(regions.size() * 2);
-        for (int[] r : regions)
+        for (int[] r : regions) {
             lookup.put(pack(r[0], r[1]), r[2]);
+        }
 
         // ── Draw cells ──────────────────────────────────────────────────────
         for (int rz = minRz; rz <= maxRz; rz++) {
@@ -101,9 +104,11 @@ final class PruneMapRenderer extends MapRenderer {
                 int px = offX + (rx - minRx) * cellPx;
                 int pz = offY + (rz - minRz) * cellPx;
 
-                for (int dx = 0; dx < cellPx; dx++)
-                    for (int dz = 0; dz < cellPx; dz++)
+                for (int dx = 0; dx < cellPx; dx++) {
+                    for (int dz = 0; dz < cellPx; dz++) {
                         canvas.setPixel(clamp(px + dx), clamp(pz + dz), col);
+                    }
+                }
             }
         }
 
@@ -125,11 +130,13 @@ final class PruneMapRenderer extends MapRenderer {
     }
 
     private static void fillRect(MapCanvas c, int x, int y, int w, int h, byte col) {
-        for (int dx = 0; dx < w; dx++)
+        for (int dx = 0; dx < w; dx++) {
             for (int dy = 0; dy < h; dy++) {
                 int px = x + dx, py = y + dy;
-                if (px >= 0 && px < 128 && py >= 0 && py < 128)
+                if (px >= 0 && px < 128 && py >= 0 && py < 128) {
                     c.setPixel(px, py, col);
+                }
             }
+        }
     }
 }

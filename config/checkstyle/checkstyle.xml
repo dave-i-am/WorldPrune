@@ -1,0 +1,78 @@
+<?xml version="1.0"?>
+<!DOCTYPE module PUBLIC
+    "-//Checkstyle//DTD Checkstyle Configuration 1.3//EN"
+    "https://checkstyle.org/dtds/configuration_1_3.dtd">
+<!--
+  WorldPrune Checkstyle configuration.
+  Based on a practical subset of Google Java Style — not exhaustive,
+  focused on catching real issues and enforcing consistency.
+-->
+<module name="Checker">
+    <property name="charset" value="UTF-8"/>
+    <property name="severity" value="error"/>
+
+    <!-- No tab characters -->
+    <module name="FileTabCharacter">
+        <property name="eachLine" value="true"/>
+    </module>
+
+    <!-- No trailing whitespace -->
+    <module name="RegexpSingleline">
+        <property name="format" value="\s+$"/>
+        <property name="message" value="Trailing whitespace."/>
+    </module>
+
+    <module name="TreeWalker">
+
+        <!-- ── Imports ───────────────────────────────────────────── -->
+        <module name="AvoidStarImport"/>
+        <module name="UnusedImports"/>
+        <module name="RedundantImport"/>
+
+        <!-- ── Naming ────────────────────────────────────────────── -->
+        <module name="ConstantName"/>          <!-- UPPER_CASE -->
+        <module name="LocalVariableName"/>     <!-- camelCase -->
+        <module name="MemberName"/>            <!-- camelCase -->
+        <module name="MethodName">
+            <!-- Allow underscore_naming in JUnit test methods -->
+            <property name="format" value="^[a-z][a-zA-Z0-9_]*$"/>
+        </module>
+        <module name="PackageName">
+            <property name="format" value="^[a-z]+(\.[a-z][a-z0-9]*)*$"/>
+        </module>
+        <module name="ParameterName"/>         <!-- camelCase -->
+        <module name="TypeName"/>              <!-- UpperCamelCase -->
+
+        <!-- ── Code quality ──────────────────────────────────────── -->
+        <module name="EmptyBlock">
+            <property name="option" value="text"/>  <!-- comment required -->
+        </module>
+        <module name="EmptyCatchBlock">
+            <property name="exceptionVariableName" value="expected|ignore|ignored"/>
+        </module>
+        <module name="EqualsHashCode"/>
+        <module name="StringLiteralEquality"/>
+        <module name="SimplifyBooleanReturn"/>
+
+        <!-- ── Whitespace ────────────────────────────────────────── -->
+        <module name="WhitespaceAfter"/>
+        <module name="NoWhitespaceBefore"/>
+        <module name="GenericWhitespace"/>
+        <module name="MethodParamPad"/>
+        <module name="TypecastParenPad"/>
+
+        <!-- ── Braces ────────────────────────────────────────────── -->
+        <!-- Require braces for multi-line bodies; allow compact single-line forms.
+             LeftCurly/RightCurly omitted — they conflict with idiomatic record
+             accessors, switch-expression defaults, and one-liner try/catch. -->
+        <module name="NeedBraces">
+            <property name="allowSingleLineStatement" value="true"/>
+        </module>
+
+        <!-- ── Misc ──────────────────────────────────────────────── -->
+        <module name="UpperEll"/>        <!-- 1L not 1l -->
+        <module name="ArrayTypeStyle"/> <!-- String[] not String args[] -->
+        <module name="ModifierOrder"/>
+
+    </module>
+</module>
