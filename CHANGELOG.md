@@ -1,3 +1,10 @@
+## [0.2.1](https://github.com/dave-i-am/WorldPrune/compare/v0.2.0...v0.2.1) (2026-04-11)
+
+
+### Bug Fixes
+
+* **release:** pin @semantic-release/github to ensure JAR is attached to releases ([08d9624](https://github.com/dave-i-am/WorldPrune/commit/08d962415970ab640782e6349f41c538ffb1940e))
+
 # [0.2.0](https://github.com/dave-i-am/WorldPrune/compare/v0.1.0...v0.2.0) (2026-04-11)
 
 

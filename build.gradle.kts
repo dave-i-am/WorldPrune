@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "dev.minecraft.prune"
-version = "0.2.0"
+version = "0.2.1"
 
 val spigotVersion = project.findProperty("spigotVersion")?.toString() ?: "1.21.1-R0.1-SNAPSHOT"
 
