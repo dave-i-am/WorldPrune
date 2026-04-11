@@ -19,14 +19,12 @@ jobs:
         with:
           ref: ${{ github.event.release.tag_name || inputs.tag }}
 
-      - name: Set up Java 21
-        uses: actions/setup-java@v5
-        with:
-          java-version: "21"
-          distribution: "temurin"
-
-      - name: Build plugin JAR
-        run: ./gradlew shadowJar --no-daemon
+      - name: Download JAR from GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ github.event.release.tag_name || inputs.tag }}"
+          gh release download "$tag" --pattern '*.jar' --dir build/libs
 
       - name: Get release changelog
         id: release
