@@ -9,7 +9,12 @@ import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.function.Consumer;
 import java.util.logging.Logger;
@@ -43,6 +48,47 @@ public final class ScheduleService {
         this.planService = planService;
         this.applyService = applyService;
         this.purgeService = purgeService;
+    }
+
+    /** Snapshot of schedule state for display via /prune schedule. */
+    public record ScheduleStatus(
+            boolean enabled,
+            double intervalHours,
+            List<String> configuredWorlds,
+            Map<String, Long> lastRunMs   // world -> epoch ms, 0 = never run
+    ) {
+        private static final DateTimeFormatter FMT =
+                DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.systemDefault());
+
+        public long nextRunMs(String world) {
+            long last = lastRunMs.getOrDefault(world, 0L);
+            if (last == 0L) return 0L;
+            return last + (long) (intervalHours * 3_600_000);
+        }
+
+        public String formatTime(long epochMs) {
+            if (epochMs == 0L) return "never";
+            return FMT.format(Instant.ofEpochMilli(epochMs));
+        }
+    }
+
+    /** Read current schedule configuration and persisted last-run timestamps. */
+    public ScheduleStatus getStatus() {
+        boolean enabled = plugin.getConfig().getBoolean("schedule.enabled", false);
+        double intervalHours = plugin.getConfig().getDouble("schedule.intervalHours", 168.0);
+        List<String> worlds = plugin.getConfig().getStringList("schedule.worlds");
+
+        Properties state = loadState();
+        Map<String, Long> lastRunMs = new LinkedHashMap<>();
+        for (String world : worlds) {
+            String raw = state.getProperty(world, "0");
+            try {
+                lastRunMs.put(world, Long.parseLong(raw));
+            } catch (NumberFormatException e) {
+                lastRunMs.put(world, 0L);
+            }
+        }
+        return new ScheduleStatus(enabled, intervalHours, worlds, lastRunMs);
     }
 
     /** Start the hourly heartbeat. Call once from {@code onEnable}. */
