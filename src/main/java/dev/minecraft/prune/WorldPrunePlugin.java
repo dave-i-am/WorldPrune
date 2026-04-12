@@ -33,10 +33,14 @@ public class WorldPrunePlugin extends JavaPlugin {
         this.restoreService = new RestoreService(this);
         this.purgeService = new PurgeService(this);
 
+        // Build schedule service early so PruneCommand can reference it
+        this.scheduleService = new ScheduleService(this, planService, applyService, purgeService);
+
         PluginCommand prune = getCommand("prune");
         if (prune != null) {
             PruneCommand command = new PruneCommand(this, planService, heuristicService, applyService, restoreService, purgeService, planStore);
             command.setCoreProtectProvider(this.coreProtectProvider);
+            command.setScheduleService(this.scheduleService);
             prune.setExecutor(command);
             prune.setTabCompleter(command);
         } else {
@@ -44,7 +48,6 @@ public class WorldPrunePlugin extends JavaPlugin {
         }
 
         // Start automated scheduler if enabled in config
-        this.scheduleService = new ScheduleService(this, planService, applyService, purgeService);
         if (getConfig().getBoolean("schedule.enabled", false)) {
             getLogger().warning("[WorldPrune] Automated scheduled pruning is ENABLED. Region files will be quarantined unattended.");
             scheduleService.start();

@@ -42,6 +42,7 @@ public final class PruneCommand implements TabExecutor {
     private final PlanStore planStore;
     private final Map<String, PendingConfirm> pendingConfirms = new ConcurrentHashMap<>();
     private CoreProtectProvider coreProtectProvider; // optional – set after construction
+    private ScheduleService scheduleService;         // optional – set after construction
 
     public PruneCommand(WorldPrunePlugin plugin, PlanService planService, HeuristicService heuristicService, ApplyService applyService, RestoreService restoreService, PurgeService purgeService, PlanStore planStore) {
         this.plugin = plugin;
@@ -55,6 +56,10 @@ public final class PruneCommand implements TabExecutor {
 
     void setCoreProtectProvider(CoreProtectProvider provider) {
         this.coreProtectProvider = provider;
+    }
+
+    void setScheduleService(ScheduleService svc) {
+        this.scheduleService = svc;
     }
 
     @Override
@@ -103,6 +108,7 @@ public final class PruneCommand implements TabExecutor {
             }
             case "map"    -> handleMapGive(sender, args);
             case "status"  -> handleStatus(sender);
+            case "schedule" -> handleScheduleStatus(sender);
             default        -> { sender.sendMessage("§cUnknown subcommand: " + sub); sendUsage(sender); }
         }
         return true;
@@ -119,6 +125,7 @@ public final class PruneCommand implements TabExecutor {
         sender.sendMessage("§e/prune plan §7<planId>             §f- Show details for a plan");
         sender.sendMessage("§e/prune map §7[world] [planId]       §f- Give yourself a map item of a plan");
         sender.sendMessage("§e/prune status                     §f- Show config and recent plans");
+        sender.sendMessage("§e/prune schedule                   §f- Show schedule status and last/next run times");
     }
 
     // ─────────────────────────── MAP ITEM ────────────────────────────────────
@@ -598,6 +605,27 @@ public final class PruneCommand implements TabExecutor {
         sender.sendMessage("§8§m══════════════════════════════════════");
     }
 
+    private void handleScheduleStatus(CommandSender sender) {
+        ScheduleService.ScheduleStatus s = scheduleService.getStatus();
+        sender.sendMessage("§8§m══════════════════════════════════════");
+        sender.sendMessage("§e§lSchedule Status");
+        sender.sendMessage("§7Enabled:  " + (s.enabled() ? "§atrue" : "§cfalse"));
+        sender.sendMessage("§7Interval: §f" + s.intervalHours() + " hours");
+        if (s.configuredWorlds().isEmpty()) {
+            sender.sendMessage("§7Worlds:   §7(none configured)");
+        } else {
+            sender.sendMessage("§7Worlds:");
+            for (String world : s.configuredWorlds()) {
+                long last = s.lastRunMs().getOrDefault(world, 0L);
+                long next = s.nextRunMs(world);
+                String lastStr = s.formatTime(last);
+                String nextStr = next == 0L ? "on next heartbeat" : s.formatTime(next);
+                sender.sendMessage("§7  " + world + "  §7last=§f" + lastStr + "  §7next=§f" + nextStr);
+            }
+        }
+        sender.sendMessage("§8§m══════════════════════════════════════");
+    }
+
     // ─────────────────────────── HELPERS ────────────────────────
 
     private World resolveWorld(CommandSender sender, String worldArg) {
@@ -613,7 +641,7 @@ public final class PruneCommand implements TabExecutor {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
-            return List.of("scan", "plans", "plan", "apply", "confirm", "undo", "quarantine", "drop", "map", "status");
+            return List.of("scan", "plans", "plan", "apply", "confirm", "undo", "quarantine", "drop", "map", "status", "schedule");
         }
 
         String sub = args[0].toLowerCase(Locale.ROOT);
