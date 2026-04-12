@@ -9,7 +9,7 @@ plugins {
 group = "dev.minecraft.prune"
 version = "0.3.0-beta.1"
 
-val spigotVersion = project.findProperty("spigotVersion")?.toString() ?: "1.21.1-R0.1-SNAPSHOT"
+val spigotVersion = project.findProperty("spigotVersion")?.toString() ?: "1.20-R0.1-SNAPSHOT"
 
 repositories {
     mavenCentral()
