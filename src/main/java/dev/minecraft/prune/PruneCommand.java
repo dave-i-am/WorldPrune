@@ -494,7 +494,8 @@ public final class PruneCommand implements TabExecutor {
                     String statusLabel = !info.hasManifest() ? "INCOMPLETE" : info.isRestored() ? "RESTORED" : "ACTIVE";
                     String lineColor   = !info.hasManifest() ? "§e" : info.isRestored() ? "§a" : "§c";
                     String files = info.fileCount() > 0 ? info.fileCount() + " files" : "(manifest only)";
-                    sender.sendMessage(lineColor + "  " + info.applyId() + " [" + statusLabel + "]  " + files);
+                    sender.sendMessage(lineColor + "  " + info.applyId() + " [" + statusLabel + "]  " + files
+                            + "  §7(§f" + PurgeService.formatSize(info.sizeBytes()) + "§7)");
                 }
                 sender.sendMessage(" ");
                 sender.sendMessage("§7To permanently delete: §f/prune drop " + world.getName() + " <apply-id>");
