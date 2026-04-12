@@ -1,3 +1,16 @@
+# [0.3.0-beta.1](https://github.com/dave-i-am/WorldPrune/compare/v0.2.1...v0.3.0-beta.1) (2026-04-12)
+
+
+### Bug Fixes
+
+* improve tab completion coverage across all subcommands ([7eeb9eb](https://github.com/dave-i-am/WorldPrune/commit/7eeb9eba16eb6797f470c494311ec37582e3dd1f))
+
+
+### Features
+
+* add /prune schedule command showing last/next run times per world ([e6707af](https://github.com/dave-i-am/WorldPrune/commit/e6707af1117a88343daf2b49659d9de2d8b1622e))
+* show disk size in /prune quarantine and /prune drop output ([fafe768](https://github.com/dave-i-am/WorldPrune/commit/fafe76884ae0fa244745f274327a8a381488b88c))
+
 ## [0.2.1](https://github.com/dave-i-am/WorldPrune/compare/v0.2.0...v0.2.1) (2026-04-11)
 
 
