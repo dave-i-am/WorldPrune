@@ -48,6 +48,31 @@ class PurgeServiceTest {
         service = new PurgeService(plugin);
     }
 
+    // ─── formatSize ────────────────────────────────────────────────────────────
+
+    @Test
+    void formatSize_bytes() {
+        assertEquals("512 B", PurgeService.formatSize(512));
+    }
+
+    @Test
+    void formatSize_kib() {
+        assertEquals("1.0 KiB", PurgeService.formatSize(1024));
+        assertEquals("1.5 KiB", PurgeService.formatSize(1536));
+    }
+
+    @Test
+    void formatSize_mib() {
+        assertEquals("1.0 MiB", PurgeService.formatSize(1024 * 1024));
+        assertEquals("14.0 MiB", PurgeService.formatSize(14L * 1024 * 1024));
+    }
+
+    @Test
+    void formatSize_gib() {
+        assertEquals("1.00 GiB", PurgeService.formatSize(1024L * 1024 * 1024));
+        assertEquals("2.50 GiB", PurgeService.formatSize(1024L * 1024 * 1024 * 5 / 2));
+    }
+
     // ─── tokenForApply ─────────────────────────────────────────────────────────
 
     @Test
@@ -100,11 +125,13 @@ class PurgeServiceTest {
         assertFalse(result.get(0).isRestored());
         assertTrue(result.get(0).hasManifest());
         assertEquals(1, result.get(0).fileCount());
+        assertEquals(16L, result.get(0).sizeBytes(), "Active: manifest (12 B) + r.0.0.mca (4 B)");
 
         assertEquals("apply-20260101-120000", result.get(1).applyId());
         assertTrue(result.get(1).isRestored());
         assertTrue(result.get(1).hasManifest());
         assertEquals(0, result.get(1).fileCount());
+        assertEquals(12L, result.get(1).sizeBytes(), "Restored: only the manifest file (12 B)");
     }
 
     @Test
@@ -174,7 +201,9 @@ class PurgeServiceTest {
         service.purge(world, applyId, token, progress::add);
 
         assertFalse(Files.exists(dir), "Apply dir should be fully deleted");
-        assertTrue(progress.stream().anyMatch(s -> s.contains("2")), "Progress should mention 2 files");
+        // 3 regular files: manifest + 2 .mca files
+        assertTrue(progress.stream().anyMatch(s -> s.contains("3 files")), "Progress should mention 3 files");
+        assertTrue(progress.stream().anyMatch(s -> s.contains("cannot be undone")), "Progress should warn about permanence");
     }
 
     @Test
