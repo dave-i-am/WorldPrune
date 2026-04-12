@@ -12,7 +12,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -613,34 +612,81 @@ public final class PruneCommand implements TabExecutor {
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
-            return List.of("scan", "plans", "plan", "apply", "confirm", "undo", "quarantine", "drop", "map", "status");
+            return List.of("scan", "plans", "plan", "apply", "confirm", "undo",
+                    "quarantine", "drop", "map", "status");
         }
 
         String sub = args[0].toLowerCase(Locale.ROOT);
-        List<String> worldNames = new ArrayList<>();
-        for (World w : Bukkit.getWorlds()) worldNames.add(w.getName());
+        List<String> worldNames = Bukkit.getWorlds().stream().map(World::getName).toList();
 
-        switch (sub) {
-            case "scan", "plans", "apply", "quarantine", "undo", "map" -> {
-                if (args.length == 2) return worldNames;
-                if ("undo".equals(sub) && args.length == 3) return List.of("<apply-id>");
-                if ("apply".equals(sub) && args.length == 3) return List.of("--force-unlock");
-                if ("map".equals(sub) && args.length == 3) {
-                    try { return planStore.listPlans(null).stream().map(m -> m.planId).toList(); }
-                    catch (IOException e) { return List.of(); }
-                }
+        return switch (sub) {
+            // Single-arg subcommands: arg 2 = optional world filter
+            case "scan", "plans", "quarantine" -> args.length == 2 ? worldNames : List.of();
+
+            // apply: arg 2 = world, arg 3 = flag
+            case "apply" -> {
+                if (args.length == 2) yield worldNames;
+                if (args.length == 3) yield List.of("--force-unlock");
+                yield List.of();
             }
-            case "plan" -> {
-                if (args.length == 2) {
-                    try { return planStore.listPlans(null).stream().map(m -> m.planId).toList(); }
-                    catch (IOException e) { return List.of(); }
-                }
+
+            // plan: arg 2 = planId (all worlds)
+            case "plan" -> args.length == 2 ? listPlanIds(null) : List.of();
+
+            // undo: arg 2 = world, arg 3 = apply-id of an ACTIVE (not yet restored) apply
+            case "undo" -> {
+                if (args.length == 2) yield worldNames;
+                if (args.length == 3) yield listApplyIds(args[1], false);
+                yield List.of();
             }
+
+            // drop: arg 2 = world, arg 3 = apply-id (any state can be dropped)
             case "drop" -> {
-                if (args.length == 2) return worldNames;
-                if (args.length == 3) return List.of("<apply-id>");
+                if (args.length == 2) yield worldNames;
+                if (args.length == 3) yield listApplyIds(args[1], true);
+                yield List.of();
             }
+
+            // map: arg 2 = world, arg 3 = planId scoped to that world
+            case "map" -> {
+                if (args.length == 2) yield worldNames;
+                if (args.length == 3) yield listPlanIds(args[1]);
+                yield List.of();
+            }
+
+            // No further arguments
+            case "confirm", "status" -> List.of();
+
+            default -> List.of();
+        };
+    }
+
+    /** Returns plan IDs, optionally filtered to a specific world. */
+    private List<String> listPlanIds(String worldFilter) {
+        try {
+            return planStore.listPlans(worldFilter).stream()
+                    .map(m -> m.planId)
+                    .toList();
+        } catch (IOException e) {
+            return List.of();
         }
-        return List.of();
+    }
+
+    /**
+     * Returns apply IDs from the quarantine of the named world.
+     * When {@code allStates} is false, only ACTIVE (restoreable) entries are returned.
+     * When {@code allStates} is true, all entries (ACTIVE, RESTORED, INCOMPLETE) are returned.
+     */
+    private List<String> listApplyIds(String worldName, boolean allStates) {
+        World w = Bukkit.getWorld(worldName);
+        if (w == null) return List.of();
+        try {
+            return purgeService.listQuarantine(w).stream()
+                    .filter(d -> allStates || (d.hasManifest() && !d.isRestored()))
+                    .map(PurgeService.ApplyDirInfo::applyId)
+                    .toList();
+        } catch (IOException e) {
+            return List.of();
+        }
     }
 }
