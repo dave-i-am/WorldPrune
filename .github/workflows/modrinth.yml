@@ -60,10 +60,12 @@ jobs:
           name: WorldPrune ${{ github.event.release.tag_name || inputs.tag }}
           version: ${{ github.event.release.tag_name || inputs.tag }}
           changelog: ${{ steps.release.outputs.body }}
-          version-type: release
+          version-type: ${{ github.event.release.prerelease && 'beta' || 'release' }}
           loaders: spigot, paper, bukkit
 
       - name: Update Modrinth project description
+        # Skip on pre-releases — only update the description on stable releases
+        if: ${{ !github.event.release.prerelease }}
         run: |
           curl -sf "https://raw.githubusercontent.com/${{ github.repository }}/main/modrinth-description.md" \
             -o modrinth-description.md

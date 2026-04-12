@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
 
 # semantic-release needs to push commits + create releases
 permissions:
