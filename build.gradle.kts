@@ -21,7 +21,7 @@ dependencies {
     compileOnly("org.spigotmc:spigot-api:$spigotVersion")
     // sqlite-jdbc is shaded into the JAR (see shadowJar task below).
     // Querying CoreProtect's database.db directly means no api.enabled requirement.
-    implementation("org.xerial:sqlite-jdbc:3.51.3.0")
+    implementation("org.xerial:sqlite-jdbc:3.53.0.0")
 
     testImplementation("org.junit.jupiter:junit-jupiter:6.0.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
