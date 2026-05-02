@@ -1,3 +1,10 @@
+# [0.3.0-beta.2](https://github.com/dave-i-am/WorldPrune/compare/v0.3.0-beta.1...v0.3.0-beta.2) (2026-05-02)
+
+
+### Features
+
+* add Towny Advanced and Residence claim support ([542a308](https://github.com/dave-i-am/WorldPrune/commit/542a3084d5dec001b409e7c9ff98fd19871a5219))
+
 # [0.3.0-beta.1](https://github.com/dave-i-am/WorldPrune/compare/v0.2.1...v0.3.0-beta.1) (2026-04-12)
 
 
