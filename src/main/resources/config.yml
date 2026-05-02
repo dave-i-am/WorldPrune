@@ -6,7 +6,9 @@ storage:
   dataRoot: ""  # Empty = plugin data folder
 
 claims:
-  path: "plugins/GriefPreventionData/ClaimData"
+  path: "plugins/GriefPreventionData/ClaimData"  # GriefPrevention claim files
+  towny: "plugins/Towny/data/townblocks"          # Towny townblocks directory (file fallback)
+  residence: "plugins/Residence/Save/Global.yml"  # Residence save file (file fallback)
   marginChunks: 5  # Extra chunks to keep around each claim boundary
 
 manualKeep:

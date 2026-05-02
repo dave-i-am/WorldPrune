@@ -104,4 +104,50 @@ print("  r.0.0.mca → has CP activity → will be rescued by WorldPrune")
 print("  r.1.0.mca → no CP activity  → stays as prune candidate")
 PYEOF
 
+# ── 5. Towny file-fallback fixtures ──────────────────────────────────────────
+# Creates townblock .data files for the integration world so WorldPrune's
+# Towny file-fallback path is exercised. We use chunk (1600,1600) → region r.50.50
+# which is far from the existing test regions and won't interfere with other assertions.
+echo "▶ Seeding Towny townblock fixtures (chunk 1600,1600 → region r.50.50)..."
+docker exec -u minecraft "$CONTAINER" python3 -c "
+import os
+world = '${WORLD}'
+towny_dir = f'/data/plugins/Towny/data/townblocks'
+os.makedirs(towny_dir, exist_ok=True)
+fname = os.path.join(towny_dir, f'{world}_1600_1600.data')
+if not os.path.exists(fname):
+    open(fname, 'w').close()
+    print(f'  created {fname}')
+else:
+    print(f'  exists  {fname}')
+"
+
+# ── 6. Residence file-fallback fixture ────────────────────────────────────────
+# Creates a minimal Global.yml with one residence covering block region r.51.50
+# (blocks 26112–26623 × 25600–26111 → chunks 1632–1663 × 1600–1631 → region 51,50).
+echo "▶ Seeding Residence Global.yml fixture (region r.51.50)..."
+docker exec -u minecraft "$CONTAINER" python3 -c "
+import os
+world = '${WORLD}'
+res_dir = '/data/plugins/Residence/Save'
+os.makedirs(res_dir, exist_ok=True)
+path = os.path.join(res_dir, 'Global.yml')
+content = '''Residences:
+  integration_test:
+    Permissions:
+      World: ${WORLD}
+    Areas:
+      main:
+        X1: 26112
+        Y1: 64
+        Z1: 25600
+        X2: 26623
+        Y2: 256
+        Z2: 26111
+'''
+with open(path, 'w') as f:
+    f.write(content)
+print(f'  written {path}')
+"
+
 echo "▶ Seed complete."
