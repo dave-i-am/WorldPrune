@@ -126,7 +126,7 @@ public final class ApplyService {
 
         progress.accept("§a✓ Applied: §f" + moved + " §7files quarantined, " + skipped + " skipped.");
         progress.accept("§7Quarantine: §o" + destRoot);
-        progress.accept("§7To undo: §f/prune restore " + world.getName());
+        progress.accept("§7To undo: §f/prune undo " + world.getName());
 
         plugin.getLogger().info("[Apply] " + applyId + " — moved=" + moved + " skipped=" + skipped
                 + " plan=" + planId + " world=" + world.getName());

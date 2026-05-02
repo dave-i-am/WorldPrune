@@ -2,13 +2,17 @@
 
 Prunes inactive Minecraft region files — safely, with quarantine and rollback.
 
-WorldPrune is an operator-only Paper/Spigot plugin that identifies region files not covered by GriefPrevention claims and moves them to a quarantine folder. Every operation is reversible. Nothing is permanently deleted until you explicitly ask for it.
+WorldPrune is an operator-only Paper/Spigot plugin that identifies region files not covered by land-claim plugins and moves them to a quarantine folder. Every operation is reversible. Nothing is permanently deleted until you explicitly ask for it.
 
 ## Requirements
 
 - Paper or Spigot 1.20.1+
 - Java 21+
-- [GriefPrevention](https://www.spigotmc.org/resources/griefprevention.1573/) (optional — used as the primary claim source; falls back to claim file parsing if the API is unavailable)
+- At least one of the following claim plugins (all optional — WorldPrune works without any of them, but coverage is better with one installed):
+  - [GriefPrevention](https://www.spigotmc.org/resources/griefprevention.1573/) — API queried directly; falls back to claim file parsing
+  - [Towny Advanced](https://github.com/TownyAdvanced/Towny) — API queried directly; falls back to townblock `.data` file parsing
+  - [Residence](https://www.spigotmc.org/resources/residence.11480/) — API queried directly; falls back to `Global.yml` parsing
+- [CoreProtect](https://www.spigotmc.org/resources/coreprotect.8631/) (optional) — rescues unclaimed regions with recent player activity
 
 ## Installation
 
@@ -31,7 +35,7 @@ Drop `world-prune-plugin-0.1.0.jar` into your `plugins/` folder and restart. A d
 
 ## How it works
 
-1. **Scan** — WorldPrune reads your GriefPrevention claims (plus any manual keep rectangles) and builds a set of region coordinates to keep. Unclaimed regions are marked as prune candidates, subject to heuristic filtering.
+1. **Scan** — WorldPrune reads claims from GriefPrevention, Towny, and Residence (whichever are present) plus any manual keep rectangles, and builds a set of region coordinates to keep. Unclaimed regions are marked as prune candidates, subject to heuristic filtering.
 2. **Heuristic filtering** — In `entity-aware` mode, each candidate's entity file is scanned for player-placed entities (item frames, paintings, armor stands, etc.). Regions containing these are kept even if unclaimed.
 3. **Apply** — Candidate region files are moved to `<world>/quarantine/<apply-id>/`. An `apply-manifest.json` records every move for rollback.
 4. **Undo** — `/prune undo` reads the manifest and moves files back to their original locations.
@@ -60,7 +64,9 @@ Key settings in `plugins/WorldPrune/config.yml`:
 source: combined          # claims | keepRules | combined
 
 claims:
-  path: "plugins/GriefPreventionData/ClaimData"
+  path: "plugins/GriefPreventionData/ClaimData"   # GriefPrevention file fallback
+  towny: "plugins/Towny/data/townblocks"           # Towny file fallback
+  residence: "plugins/Residence/Save/Global.yml"   # Residence file fallback
   marginChunks: 5         # buffer chunks around each claim
 
 keepRules:

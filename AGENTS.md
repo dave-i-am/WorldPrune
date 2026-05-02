@@ -185,9 +185,12 @@ prune.admin        (default: op)  — scan, plans, plan, status
   - Index ordering and world filtering (`listPlans()`)
   - Malformed index-line tolerance
 - [src/test/java/dev/minecraft/prune/ClaimBoundsProviderTest.java](src/test/java/dev/minecraft/prune/ClaimBoundsProviderTest.java)
-  - File-based claim parsing fallback path
+  - File-based claim parsing fallback path (GriefPrevention)
   - World marker filtering behavior
   - Missing claim-directory behavior
+  - Towny file fallback: chunk-coord `.data` file parsing, world-name case-insensitivity, missing directory
+  - Residence file fallback: `Global.yml` parsing, world filtering, sub-zone areas
+  - Multi-source merge: GP + Towny combine into single `ClaimLoadResult`
 - [src/test/java/dev/minecraft/prune/HeuristicModeTest.java](src/test/java/dev/minecraft/prune/HeuristicModeTest.java)
   - CLI parsing stability and safe defaults
 - [src/test/java/dev/minecraft/prune/HeuristicServiceTest.java](src/test/java/dev/minecraft/prune/HeuristicServiceTest.java)
@@ -241,7 +244,7 @@ prune.admin        (default: op)  — scan, plans, plan, status
   - Returns false (fail-open) on corrupt/empty DB file
   - Behaviour-override subclass pattern verified
 
-**Total: 108 automated tests passing.**
+**Total: 133 automated tests passing.**
 
 ### Integration Testing
 
@@ -280,7 +283,7 @@ Configurable env vars: `MINECRAFT_CONTAINER`, `MINECRAFT_WORLD`, `MINECRAFT_DATA
 MINECRAFT_CONTAINER=my-server MINECRAFT_WORLD=survival ./gradlew integrationTest
 ```
 
-**Test script** — `integration/run.sh` covers 65 assertions (47 standard + 18 CoreProtect):
+**Test script** — `integration/run.sh` covers 77 assertions (47 standard + 18 CoreProtect + 12 Towny/Residence):
 - `status`, `scan`, `plans`, `plan <id>`
 - `apply` preview + staged `confirm`
 - quarantine listing (ACTIVE), `undo` (RESTORED), `drop` + confirm + gone
@@ -292,6 +295,8 @@ MINECRAFT_CONTAINER=my-server MINECRAFT_WORLD=survival ./gradlew integrationTest
 - `r.100.100.mca`, `r.101.100.mca` — far-from-spawn prune candidates
 - `r.0.0.mca`, `r.1.0.mca` — CoreProtect fixture regions
 - Seeds CoreProtect DB with block activity at (256, 64, 256) → rescues r.0.0
+- `plugins/Towny/data/townblocks/world_1600_1600.data` — Towny file-fallback fixture → keeps r.50.50
+- `plugins/Residence/Save/Global.yml` with a residence at blocks (1632–1647, 1600–1615) → keeps r.51.50
 
 ### Unit Testing
 - Run with `./gradlew test`.
