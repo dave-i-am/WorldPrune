@@ -299,6 +299,42 @@ else
     fi
 fi
 
+# ══════════════════════════════════════════════════════════════════════════════
+# Towny + Residence file-fallback assertions
+# ══════════════════════════════════════════════════════════════════════════════
+
+section "prune scan — Towny + Residence file fallback"
+
+# Run a fresh scan so the new fixture files are included
+TR_SCAN=$(rcon "prune scan $WORLD")
+assert_contains "scan start acknowledged" "Scanning" "$TR_SCAN"
+
+poll_until "scan produced a new plan" "plan-" "prune plans $WORLD"
+
+# Grab the latest plan (most recent first in plan list)
+TR_PLANS=$(rcon "prune plans $WORLD")
+TR_PLAN_ID=$(echo "$TR_PLANS" | grep -oE 'plan-[a-z]+-[0-9]+-[0-9]+' | head -1)
+
+if [[ -z "$TR_PLAN_ID" ]]; then
+    fail "Could not extract plan ID for Towny/Residence test"
+else
+    echo "    Plan ID: $TR_PLAN_ID"
+    TR_REPORT="${PLUGIN_DATA}/reports/${TR_PLAN_ID}/${WORLD}"
+
+    section "Towny/Residence — claimSource in summary.json"
+    TR_SUMMARY=$(dexec cat "${TR_REPORT}/summary.json" 2>/dev/null || echo "FILE_NOT_FOUND")
+    assert_contains "summary.json is readable" "claimSource" "$TR_SUMMARY"
+    assert_contains "towny-files appears in claimSource"    "towny-files"    "$TR_SUMMARY"
+    assert_contains "residence-file appears in claimSource" "residence-file" "$TR_SUMMARY"
+
+    section "Towny/Residence — claim-derived regions kept"
+    TR_KEEP=$(dexec cat "${TR_REPORT}/keep-regions-combined.txt" 2>/dev/null \
+              || dexec cat "${TR_REPORT}/keep-regions-from-claims-and-manual.txt" 2>/dev/null \
+              || echo "FILE_NOT_FOUND")
+    assert_contains "Towny chunk 1600,1600 → r.50.50 kept"      "r.50.50.mca"  "$TR_KEEP"
+    assert_contains "Residence block area 26112–26623 → r.51.50 kept" "r.51.50.mca" "$TR_KEEP"
+fi
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 
 echo ""

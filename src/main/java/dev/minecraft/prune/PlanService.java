@@ -40,12 +40,7 @@ public final class PlanService {
         Path reportDir = reportsRoot.resolve(planId).resolve(world.getName());
         Files.createDirectories(reportDir);
 
-        Path claimDir = resolvePathOrDefault(
-                plugin.getConfig().getString("claims.path", "plugins/GriefPreventionData/ClaimData"),
-                plugin.getServer().getWorldContainer().toPath().resolve("plugins/GriefPreventionData/ClaimData")
-        );
-
-        ClaimBoundsProvider.ClaimLoadResult claimLoad = claimBoundsProvider.load(world, claimDir);
+        ClaimBoundsProvider.ClaimLoadResult claimLoad = loadAllClaims(world);
         List<Rect> claimBlocks = claimLoad.claims();
         String claimSource = claimLoad.source();
         List<Rect> manualBlocks = loadManualKeepBlocks(world);
@@ -97,11 +92,7 @@ public final class PlanService {
         Files.createDirectories(reportDir);
 
         // --- Claims side ---
-        Path claimDir = resolvePathOrDefault(
-                plugin.getConfig().getString("claims.path", "plugins/GriefPreventionData/ClaimData"),
-                plugin.getServer().getWorldContainer().toPath().resolve("plugins/GriefPreventionData/ClaimData")
-        );
-        ClaimBoundsProvider.ClaimLoadResult claimLoad = claimBoundsProvider.load(world, claimDir);
+        ClaimBoundsProvider.ClaimLoadResult claimLoad = loadAllClaims(world);
         List<Rect> claimBlocks = claimLoad.claims();
         String claimSource = claimLoad.source();
         List<Rect> manualBlocks = loadManualKeepBlocks(world);
@@ -152,6 +143,24 @@ public final class PlanService {
         String confirmToken = PlanStore.tokenForPlan(planId);
         planStore.savePlanMetadata(planId, world.getName(), "combined", heuristicMode.cli(), marginChunks, keepRegions.size(), pruneCandidates.size(), reclaimableGiB, confirmToken);
         return new PlanResult(planId, world.getName(), reportDir.toFile(), "combined", confirmToken);
+    }
+
+    /**
+     * Loads claims from all configured sources: GriefPrevention, Towny, and Residence.
+     * Each plugin's live API is tried first; the configured file path is used as fallback.
+     */
+    private ClaimBoundsProvider.ClaimLoadResult loadAllClaims(World world) {
+        Path serverPlugins = plugin.getServer().getWorldContainer().toPath().resolve("plugins");
+        Path gpClaimDir = resolvePathOrDefault(
+                plugin.getConfig().getString("claims.path", ""),
+                serverPlugins.resolve("GriefPreventionData/ClaimData"));
+        Path townyDir = resolvePathOrDefault(
+                plugin.getConfig().getString("claims.towny", ""),
+                serverPlugins.resolve("Towny/data/townblocks"));
+        Path residenceFile = resolvePathOrDefault(
+                plugin.getConfig().getString("claims.residence", ""),
+                serverPlugins.resolve("Residence/Save/Global.yml"));
+        return claimBoundsProvider.load(world, gpClaimDir, townyDir, residenceFile);
     }
 
     private Path dataRoot() {

@@ -3,7 +3,7 @@ version: ${version}
 main: dev.minecraft.prune.WorldPrunePlugin
 api-version: "1.20"
 authors: ["ops"]
-softdepend: [GriefPrevention, CoreProtect]
+softdepend: [GriefPrevention, CoreProtect, Towny, Residence]
 
 commands:
   prune:
