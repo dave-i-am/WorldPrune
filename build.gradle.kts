@@ -99,7 +99,6 @@ tasks.named("assemble") {
 
 val mcContainer  = System.getenv("MINECRAFT_CONTAINER") ?: "paper-test-server"
 val mcWorld      = System.getenv("MINECRAFT_WORLD")     ?: "world"
-val mcDataDir    = System.getenv("MINECRAFT_DATA_DIR")  ?: "${System.getenv("HOME")}/minecraft-test-server/data"
 val pluginJar    = "build/libs/world-prune-plugin-${project.version}.jar"
 val containerJar = "/data/plugins/world-prune-plugin-${project.version}.jar"
 
@@ -111,12 +110,18 @@ tasks.register<Exec>("serverStart") {
           echo "$mcContainer is already running."
         else
           echo "Starting $mcContainer via docker compose..."
-          # Pre-seed CoreProtect CE config so it starts on first load.
-          # CE requires project_branch=development. We copy rather than bind-mount
-          # so CP can freely rewrite its config without dirtying the repo fixture.
-          mkdir -p $mcDataDir/plugins/CoreProtect
-          cp -n integration/fixtures/CoreProtect/config.yml $mcDataDir/plugins/CoreProtect/config.yml 2>/dev/null || true
-          MINECRAFT_DATA_DIR=$mcDataDir docker compose up -d
+          # Always tear down first so stale anonymous volumes (e.g. left-over
+          # *.download temp files from a crashed previous run) don't prevent
+          # Modrinth plugin downloads from succeeding.
+          docker compose down --remove-orphans --volumes 2>/dev/null || true
+          docker compose up -d
+          # Seed CoreProtect CE config immediately after container starts.
+          # /data is available as soon as the container runs; we copy before Paper
+          # loads plugins so CoreProtect sees project_branch=development on first boot.
+          until docker exec $mcContainer test -d /data 2>/dev/null; do sleep 1; done
+          docker exec -u 1000:1000 $mcContainer mkdir -p /data/plugins/CoreProtect
+          docker cp integration/fixtures/CoreProtect/config.yml $mcContainer:/data/plugins/CoreProtect/config.yml
+          docker exec $mcContainer chown 1000:1000 /data/plugins/CoreProtect/config.yml
           # Poll for RCON readiness instead of fixed sleep.
           # First-start may take 3+ minutes (Paper JAR remap + Modrinth downloads).
           echo "Waiting for server RCON to be ready (up to 5 min)..."
@@ -143,9 +148,24 @@ tasks.register<Exec>("deploy") {
 }
 
 tasks.register<Exec>("serverReload") {
-    description = "Reload the plugin inside the running container via rcon"
+    description = "Restart the container to pick up the deployed plugin JAR"
     group = "minecraft"
-    commandLine("bash", "-c", "docker exec $mcContainer rcon-cli reload confirm && sleep 2")
+    commandLine("bash", "-c", """
+        echo "Restarting $mcContainer to pick up new plugin JAR..."
+        docker compose restart
+        echo "Waiting for server RCON to be ready (up to 5 min)..."
+        deadline=$(( ${'$'}(date +%s) + 300 ))
+        until docker exec $mcContainer rcon-cli list >/dev/null 2>&1; do
+          if [ ${'$'}(date +%s) -ge ${'$'}deadline ]; then
+            echo "ERROR: server did not become ready after restart"
+            docker logs --tail 50 $mcContainer
+            exit 1
+          fi
+          printf '.'
+          sleep 5
+        done
+        echo " ready."
+    """.trimIndent())
 }
 
 tasks.register<Exec>("rcon") {
@@ -188,11 +208,11 @@ tasks.register<Exec>("serverStop") {
     description = "Destroy the test container (always run at end of integration for a clean next start)"
     group = "minecraft"
     isIgnoreExitValue = true
-    commandLine("bash", "-c", "MINECRAFT_DATA_DIR=$mcDataDir docker compose down --remove-orphans || true")
+    commandLine("bash", "-c", "docker compose down --remove-orphans --volumes || true")
 }
 
 tasks.register("integration") {
-    description = "Full integration suite: serverStart → deploy → serverReload → seed → integrationTest → serverStop"
+    description = "Full integration suite: serverStart → deploy → serverReload (container restart) → seed → integrationTest → serverStop"
     group = "verification"
     dependsOn("serverStart", "deploy", "serverReload", "seed", "integrationTest")
     finalizedBy("serverStop")
