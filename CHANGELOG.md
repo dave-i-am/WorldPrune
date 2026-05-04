@@ -1,3 +1,20 @@
+# [0.4.0-beta.1](https://github.com/dave-i-am/WorldPrune/compare/v0.3.0...v0.4.0-beta.1) (2026-05-04)
+
+
+### Bug Fixes
+
+* improve tab completion coverage across all subcommands ([7eeb9eb](https://github.com/dave-i-am/WorldPrune/commit/7eeb9eba16eb6797f470c494311ec37582e3dd1f))
+
+
+### Features
+
+* add /prune scan all and web-map async safety ([f428b5f](https://github.com/dave-i-am/WorldPrune/commit/f428b5f2a00c326714c20673440c279e77b73bb3))
+* add /prune schedule command showing last/next run times per world ([e6707af](https://github.com/dave-i-am/WorldPrune/commit/e6707af1117a88343daf2b49659d9de2d8b1622e))
+* add Towny Advanced and Residence claim support ([542a308](https://github.com/dave-i-am/WorldPrune/commit/542a3084d5dec001b409e7c9ff98fd19871a5219))
+* **claims:** add WorldGuard region support ([856300d](https://github.com/dave-i-am/WorldPrune/commit/856300def67bcbc96cf512a8b64876daeacf8e73))
+* **map:** add BlueMap and Dynmap web-map overlay ([6aadba9](https://github.com/dave-i-am/WorldPrune/commit/6aadba970bbd60d7d0f1370004799a7165dce97a))
+* show disk size in /prune quarantine and /prune drop output ([fafe768](https://github.com/dave-i-am/WorldPrune/commit/fafe76884ae0fa244745f274327a8a381488b88c))
+
 # [0.3.0-beta.3](https://github.com/dave-i-am/WorldPrune/compare/v0.3.0-beta.2...v0.3.0-beta.3) (2026-05-04)
 
 
