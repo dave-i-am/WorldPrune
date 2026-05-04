@@ -42,6 +42,7 @@ public final class PruneCommand implements TabExecutor {
     private final Map<String, PendingConfirm> pendingConfirms = new ConcurrentHashMap<>();
     private CoreProtectProvider coreProtectProvider; // optional – set after construction
     private ScheduleService scheduleService;         // optional – set after construction
+    private WebMapService webMapService;             // optional – set after construction
 
     public PruneCommand(WorldPrunePlugin plugin, PlanService planService, HeuristicService heuristicService, ApplyService applyService, RestoreService restoreService, PurgeService purgeService, PlanStore planStore) {
         this.plugin = plugin;
@@ -59,6 +60,10 @@ public final class PruneCommand implements TabExecutor {
 
     void setScheduleService(ScheduleService svc) {
         this.scheduleService = svc;
+    }
+
+    void setWebMapService(WebMapService svc) {
+        this.webMapService = svc;
     }
 
     @Override
@@ -114,7 +119,7 @@ public final class PruneCommand implements TabExecutor {
     }
 
     private void sendUsage(CommandSender sender) {
-        sender.sendMessage("§e/prune scan §7[world]              §f- Analyse world and generate a plan");
+        sender.sendMessage("§e/prune scan §7[world|all]          §f- Analyse world(s) and generate a plan");
         sender.sendMessage("§e/prune apply §7[world]             §f- Preview apply and stage for confirmation");
         sender.sendMessage("§e/prune confirm                    §f- Execute a staged operation");
         sender.sendMessage("§e/prune undo §7[world] [apply-id]   §f- Restore from quarantine");
@@ -175,32 +180,132 @@ public final class PruneCommand implements TabExecutor {
     // ─────────────────────────── SCAN ───────────────────────────────────────
 
     private void handleScan(CommandSender sender, String[] args) {
-        World world = resolveWorld(sender, args.length > 1 ? args[1] : null);
-        if (world == null) {
-            sender.sendMessage("§cCould not resolve world. Specify a name or run in-game.");
+        // Support: /prune scan all  OR  /prune scan --world all
+        String worldArg = args.length > 1 ? args[1] : null;
+        if ("--world".equalsIgnoreCase(worldArg) && args.length > 2) {
+            worldArg = args[2];
+        }
+
+        if ("all".equalsIgnoreCase(worldArg)) {
+            handleScanAll(sender);
             return;
         }
 
+        World world = resolveWorld(sender, worldArg);
+        if (world == null) {
+            sender.sendMessage("§cCould not resolve world. Specify a name, 'all', or run in-game.");
+            return;
+        }
+
+        scanOneWorld(sender, world);
+    }
+
+    /** Scans every loaded world sequentially in a single async task. */
+    private void handleScanAll(CommandSender sender) {
+        List<World> worlds = Bukkit.getWorlds();
+        sender.sendMessage("§7Scanning §e" + worlds.size() + " world(s)§7...");
+
         String source       = plugin.getConfig().getString("source", "combined").toLowerCase(Locale.ROOT);
+        if (!isValidSource(source)) {
+            sender.sendMessage("§cUnknown source in config: " + source + ". Use: claims, keepRules, combined");
+            return;
+        }
         int    marginChunks = plugin.getConfig().getInt("claims.marginChunks", 5);
-        String modeStr      = plugin.getConfig().getString("keepRules.mode", "entity-aware");
-        HeuristicMode mode  = HeuristicMode.fromString(modeStr);
+        HeuristicMode mode  = HeuristicMode.fromString(
+                plugin.getConfig().getString("keepRules.mode", "entity-aware"));
+
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            int done = 0;
+            int failed = 0;
+            int skipped = 0;
+            for (World world : worlds) {
+                try {
+                    boolean ran = runScanForWorld(sender, world, source, marginChunks, mode);
+                    if (ran) {
+                        done++;
+                    } else {
+                        skipped++;
+                    }
+                } catch (Exception e) {
+                    sender.sendMessage("§c✗ Scan failed for §e" + world.getName() + "§c: " + e.getMessage());
+                    plugin.getLogger().severe("Scan failed for " + world.getName() + ": " + e);
+                    failed++;
+                }
+            }
+            sender.sendMessage("§7All-worlds scan complete: §a" + done + " succeeded"
+                    + (failed > 0 ? "§c, " + failed + " failed" : "")
+                    + (skipped > 0 ? "§e, " + skipped + " skipped" : "") + "§7.");
+        });
+    }
+
+    /** Scans a single world asynchronously (single-world entry point). */
+    private void scanOneWorld(CommandSender sender, World world) {
+        String source       = plugin.getConfig().getString("source", "combined").toLowerCase(Locale.ROOT);
+        if (!isValidSource(source)) {
+            sender.sendMessage("§cUnknown source in config: " + source + ". Use: claims, keepRules, combined");
+            return;
+        }
+        int    marginChunks = plugin.getConfig().getInt("claims.marginChunks", 5);
+        HeuristicMode mode  = HeuristicMode.fromString(
+                plugin.getConfig().getString("keepRules.mode", "entity-aware"));
 
         sender.sendMessage("§7Scanning §e" + world.getName() + "§7 [source=§f" + source + "§7]...");
 
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
-                switch (source) {
-                    case "claims"    -> displayPlanResult(sender, planService.generatePlan(world, marginChunks), world);
-                    case "keepRules" -> displayHeuristicResult(sender, heuristicService.run(world, mode), world);
-                    case "combined"  -> displayPlanResult(sender, planService.generateCombinedPlan(world, marginChunks, mode), world);
-                    default          -> sender.sendMessage("§cUnknown source in config: " + source + ". Use: claims, keepRules, combined");
-                }
+                runScanForWorld(sender, world, source, marginChunks, mode);
             } catch (Exception e) {
                 sender.sendMessage("§cScan failed: " + e.getMessage());
                 plugin.getLogger().severe("Scan failed: " + e);
             }
         });
+    }
+
+    /** Core scan logic for one world — runs synchronously, must be called from async context. */
+    private boolean runScanForWorld(CommandSender sender, World world,
+            String source, int marginChunks, HeuristicMode mode) throws Exception {
+        switch (source) {
+            case "claims" -> {
+                PlanResult planRes = planService.generatePlan(world, marginChunks);
+                displayPlanResult(sender, planRes, world);
+                scheduleWebMapUpdate(world, planRes.planId());
+                return true;
+            }
+            case "keepRules" -> {
+                displayHeuristicResult(sender, heuristicService.run(world, mode), world);
+                return true;
+            }
+            case "combined" -> {
+                PlanResult planRes = planService.generateCombinedPlan(world, marginChunks, mode);
+                displayPlanResult(sender, planRes, world);
+                scheduleWebMapUpdate(world, planRes.planId());
+                return true;
+            }
+            default -> {
+                sender.sendMessage("§cUnknown source in config: " + source + ". Use: claims, keepRules, combined");
+                return false;
+            }
+        }
+    }
+
+    private boolean isValidSource(String source) {
+        return "claims".equals(source) || "keeprules".equals(source) || "combined".equals(source);
+    }
+
+    private void scheduleWebMapUpdate(World world, String planId) {
+        if (webMapService == null) return;
+
+        Path planDir = planStore.getPlanReportDir(planId).toPath();
+        WebMapService.MarkerInputs markerInputs;
+        try {
+            // Read plan files off-thread; only plugin API calls run on the main thread.
+            markerInputs = webMapService.readMarkerInputs(world, planDir);
+        } catch (IOException e) {
+            plugin.getLogger().fine("[WebMapService] Could not read plan files: " + e.getMessage());
+            return;
+        }
+
+        Bukkit.getScheduler().runTask(plugin, () -> webMapService.updateMarkers(world, markerInputs));
     }
 
     // ─────────────────────── PLAN LIST / SHOW ────────────────────────────────
@@ -587,6 +692,12 @@ public final class PruneCommand implements TabExecutor {
         } else {
             sender.sendMessage("§7CoreProtect:    §7inactive");
         }
+        if (webMapService != null) {
+            sender.sendMessage("§7BlueMap:        §f"
+                    + (webMapService.isBlueMapAvailable() ? "§aactive" : "§7inactive"));
+            sender.sendMessage("§7Dynmap:         §f"
+                    + (webMapService.isDynmapAvailable()  ? "§aactive" : "§7inactive"));
+        }
         sender.sendMessage(" ");
         try {
             List<PlanStore.PlanMetadata> recent = planStore.listPlans(null);
@@ -650,7 +761,16 @@ public final class PruneCommand implements TabExecutor {
 
         return switch (sub) {
             // Single-arg subcommands: arg 2 = optional world filter
-            case "scan", "plans", "quarantine" -> args.length == 2 ? worldNames : List.of();
+            // scan also accepts "all" as a special world token
+            case "scan" -> {
+                if (args.length == 2) {
+                    List<String> completions = new java.util.ArrayList<>(worldNames);
+                    completions.add(0, "all");
+                    yield completions;
+                }
+                yield List.of();
+            }
+            case "plans", "quarantine" -> args.length == 2 ? worldNames : List.of();
 
             // apply: arg 2 = world, arg 3 = flag
             case "apply" -> {
