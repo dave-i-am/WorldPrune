@@ -1,3 +1,12 @@
+# [0.3.0-beta.3](https://github.com/dave-i-am/WorldPrune/compare/v0.3.0-beta.2...v0.3.0-beta.3) (2026-05-04)
+
+
+### Features
+
+* add /prune scan all and web-map async safety ([f428b5f](https://github.com/dave-i-am/WorldPrune/commit/f428b5f2a00c326714c20673440c279e77b73bb3))
+* **claims:** add WorldGuard region support ([856300d](https://github.com/dave-i-am/WorldPrune/commit/856300def67bcbc96cf512a8b64876daeacf8e73))
+* **map:** add BlueMap and Dynmap web-map overlay ([6aadba9](https://github.com/dave-i-am/WorldPrune/commit/6aadba970bbd60d7d0f1370004799a7165dce97a))
+
 # [0.3.0-beta.2](https://github.com/dave-i-am/WorldPrune/compare/v0.3.0-beta.1...v0.3.0-beta.2) (2026-05-02)
 
 
