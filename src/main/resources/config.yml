@@ -9,6 +9,7 @@ claims:
   path: "plugins/GriefPreventionData/ClaimData"  # GriefPrevention claim files
   towny: "plugins/Towny/data/townblocks"          # Towny townblocks directory (file fallback)
   residence: "plugins/Residence/Save/Global.yml"  # Residence save file (file fallback)
+  worldguard: "plugins/WorldGuard/worlds"          # WorldGuard worlds dir (file fallback; regions.yml per world)
   marginChunks: 5  # Extra chunks to keep around each claim boundary
 
 manualKeep:
