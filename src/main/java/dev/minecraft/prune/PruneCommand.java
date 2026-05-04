@@ -65,7 +65,6 @@ public final class PruneCommand implements TabExecutor {
     void setWebMapService(WebMapService svc) {
         this.webMapService = svc;
     }
-
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (!sender.hasPermission("prune.admin")) {
