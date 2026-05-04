@@ -25,22 +25,29 @@ final class ClaimBoundsProvider {
 
     record ClaimLoadResult(List<Rect> claims, String source) {}
 
-    /** Convenience overload — only GriefPrevention paths; Towny/Residence not queried. */
+    /** Convenience overload — only GriefPrevention paths; Towny/Residence/WorldGuard not queried. */
     ClaimLoadResult load(World world, Path gpClaimDir) {
-        return load(world, gpClaimDir, null, null);
+        return load(world, gpClaimDir, null, null, null);
+    }
+
+    /** Convenience overload — GP/Towny/Residence without WorldGuard. */
+    ClaimLoadResult load(World world, Path gpClaimDir, Path townyDir, Path residenceFile) {
+        return load(world, gpClaimDir, townyDir, residenceFile, null);
     }
 
     /**
-     * Loads claims from all available sources (GriefPrevention, Towny, Residence) and
-     * merges them. Each plugin's API is tried first; if unavailable or empty, the
-     * corresponding file path is used as a fallback. Sources that contribute zero
-     * claims are omitted from the returned source string.
+     * Loads claims from all available sources (GriefPrevention, Towny, Residence,
+     * WorldGuard) and merges them. Each plugin's API is tried first; if unavailable or
+     * empty, the corresponding file path is used as a fallback. Sources that contribute
+     * zero claims are omitted from the returned source string.
      *
      * @param gpClaimDir     GriefPrevention claim-files directory (may be null)
      * @param townyDir       Towny townblocks directory (may be null)
      * @param residenceFile  Residence Global.yml save file path (may be null)
+     * @param wgWorldsDir    WorldGuard worlds directory (may be null — API is tried
+     *                       first; file fallback reads {@code <wgWorldsDir>/<world>/regions.yml})
      */
-    ClaimLoadResult load(World world, Path gpClaimDir, Path townyDir, Path residenceFile) {
+    ClaimLoadResult load(World world, Path gpClaimDir, Path townyDir, Path residenceFile, Path wgWorldsDir) {
         List<Rect> allClaims = new ArrayList<>();
         List<String> sources = new ArrayList<>();
 
@@ -103,6 +110,27 @@ final class ClaimBoundsProvider {
                 if (!residenceRects.isEmpty()) {
                     allClaims.addAll(residenceRects);
                     sources.add("residence-file");
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // ── WorldGuard ───────────────────────────────────────────────────────
+        boolean wgApiSucceeded = false;
+        try {
+            List<Rect> wgRects = loadFromWorldGuardApi(world);
+            if (!wgRects.isEmpty()) {
+                allClaims.addAll(wgRects);
+                sources.add("worldguard-api");
+                wgApiSucceeded = true;
+            }
+        } catch (Exception ignored) {}
+
+        if (!wgApiSucceeded && wgWorldsDir != null) {
+            try {
+                List<Rect> wgRects = loadFromWorldGuardFile(world, wgWorldsDir);
+                if (!wgRects.isEmpty()) {
+                    allClaims.addAll(wgRects);
+                    sources.add("worldguard-files");
                 }
             } catch (Exception ignored) {}
         }
@@ -317,6 +345,145 @@ final class ClaimBoundsProvider {
     private static int parseYamlInt(String line) {
         int colon = line.indexOf(':');
         return Integer.parseInt(line.substring(colon + 1).trim());
+    }
+
+    // ─────────────────────────── WorldGuard ──────────────────────────────────
+
+    @SuppressWarnings("unchecked")
+    private List<Rect> loadFromWorldGuardApi(World world) throws Exception {
+        if (Bukkit.getPluginManager().getPlugin("WorldGuard") == null) return List.of();
+
+        Class<?> wgClass = Class.forName("com.sk89q.worldguard.WorldGuard");
+        Object wg = wgClass.getMethod("getInstance").invoke(null);
+        Object platform = wg.getClass().getMethod("getPlatform").invoke(wg);
+        Object container = platform.getClass().getMethod("getRegionContainer").invoke(platform);
+
+        // BukkitAdapter.adapt(org.bukkit.World) → WorldEdit World
+        Class<?> adapterClass = Class.forName("com.sk89q.worldedit.bukkit.BukkitAdapter");
+        Object weWorld = adapterClass.getMethod("adapt", World.class).invoke(null, world);
+
+        // RegionContainer.get(com.sk89q.worldedit.world.World) → RegionManager
+        Class<?> weWorldClass = Class.forName("com.sk89q.worldedit.world.World");
+        Object rm = container.getClass().getMethod("get", weWorldClass).invoke(container, weWorld);
+        if (rm == null) return List.of();
+
+        Map<String, Object> regions = (Map<String, Object>) rm.getClass().getMethod("getRegions").invoke(rm);
+
+        List<Rect> out = new ArrayList<>();
+        for (Map.Entry<String, Object> entry : regions.entrySet()) {
+            if ("__global__".equals(entry.getKey())) continue;
+            Object region = entry.getValue();
+            try {
+                Object min = region.getClass().getMethod("getMinimumPoint").invoke(region);
+                Object max = region.getClass().getMethod("getMaximumPoint").invoke(region);
+                int minX = blockVecCoord(min, "X");
+                int minZ = blockVecCoord(min, "Z");
+                int maxX = blockVecCoord(max, "X");
+                int maxZ = blockVecCoord(max, "Z");
+                out.add(new Rect(minX, minZ, maxX, maxZ));
+            } catch (Exception ignored) {}
+        }
+        return out;
+    }
+
+    /** Reads the coordinate from a WorldEdit {@code BlockVector3} via reflection.
+     *  Tries {@code getX()/getZ()} first (WE 7.x), then {@code x()/z()} (WE 7.3+). */
+    private static int blockVecCoord(Object blockVec, String axis) throws Exception {
+        try {
+            return (Integer) blockVec.getClass().getMethod("get" + axis).invoke(blockVec);
+        } catch (NoSuchMethodException e) {
+            return (Integer) blockVec.getClass().getMethod(axis.toLowerCase(Locale.ROOT)).invoke(blockVec);
+        }
+    }
+
+    /**
+     * Parses WorldGuard's {@code regions.yml} file for the given world.
+     * Handles both inline ({@code min: {x: 1, y: 0, z: 2}}) and block-format
+     * min/max coordinate sections. Skips the {@code __global__} region.
+     */
+    private List<Rect> loadFromWorldGuardFile(World world, Path wgWorldsDir) throws IOException {
+        Path regionsFile = wgWorldsDir.resolve(world.getName()).resolve("regions.yml");
+        if (!Files.isRegularFile(regionsFile)) return List.of();
+
+        List<Rect> out = new ArrayList<>();
+
+        // Inline pattern: "min: {x: 100, y: 0, z: 200}" (any key order)
+        Pattern inlineMinMax = Pattern.compile("(min|max):\\s*\\{(.+)\\}");
+        Pattern xPat = Pattern.compile("x:\\s*(-?\\d+)");
+        Pattern zPat = Pattern.compile("z:\\s*(-?\\d+)");
+
+        // 0=other, 1=inside min block, 2=inside max block
+        int section = 0;
+        Integer minX = null, minZ = null, maxX = null, maxZ = null;
+        boolean skipping = false; // true while inside __global__ region
+
+        for (String raw : Files.readAllLines(regionsFile, StandardCharsets.UTF_8)) {
+            String t = raw.trim();
+            if (t.isEmpty()) continue;
+
+            // Detect __global__ region header (2-space-indented key)
+            if (t.equals("__global__:")) {
+                skipping = true;
+                section = 0;
+                minX = minZ = maxX = maxZ = null;
+                continue;
+            }
+            // Any other 2-space-indented key ends __global__ skip
+            if (skipping && raw.length() > 2 && raw.charAt(0) == ' ' && raw.charAt(1) == ' '
+                    && (raw.charAt(2) != ' ') && t.endsWith(":")) {
+                skipping = false;
+            }
+            if (skipping) continue;
+
+            // ── Inline format: min: {x: 100, y: 0, z: 200} ──────────────────
+            Matcher inline = inlineMinMax.matcher(t);
+            if (inline.find()) {
+                String inner = inline.group(2);
+                Matcher mx = xPat.matcher(inner);
+                Matcher mz = zPat.matcher(inner);
+                if (mx.find() && mz.find()) {
+                    int x = Integer.parseInt(mx.group(1));
+                    int z = Integer.parseInt(mz.group(1));
+                    if ("min".equals(inline.group(1))) { minX = x; minZ = z; }
+                    else                               { maxX = x; maxZ = z; }
+                    section = 0;
+                    if (minX != null && minZ != null && maxX != null && maxZ != null) {
+                        out.add(new Rect(minX, minZ, maxX, maxZ));
+                        minX = minZ = maxX = maxZ = null;
+                    }
+                }
+                continue;
+            }
+
+            // ── Exit current min/max block on any non-x/y/z key ──────────────
+            if (section != 0 && !t.startsWith("x:") && !t.startsWith("y:") && !t.startsWith("z:")) {
+                section = 0;
+            }
+
+            // ── Section headers (block format) ────────────────────────────────
+            if (t.startsWith("min:")) { section = 1; continue; }
+            if (t.startsWith("max:")) { section = 2; continue; }
+
+            // ── Coordinate values within a section ───────────────────────────
+            if (section == 1) {
+                if (t.startsWith("x:"))      { minX = parseYamlInt(t); }
+                else if (t.startsWith("z:")) { minZ = parseYamlInt(t); }
+            } else if (section == 2) {
+                if (t.startsWith("x:"))      { maxX = parseYamlInt(t); }
+                else if (t.startsWith("z:")) { maxZ = parseYamlInt(t); }
+            }
+
+            if (minX != null && minZ != null && maxX != null && maxZ != null) {
+                out.add(new Rect(minX, minZ, maxX, maxZ));
+                minX = minZ = maxX = maxZ = null;
+                section = 0;
+            }
+        }
+        // Flush any trailing complete rect
+        if (minX != null && minZ != null && maxX != null && maxZ != null) {
+            out.add(new Rect(minX, minZ, maxX, maxZ));
+        }
+        return out;
     }
 
     private Optional<PointXZ> parseCorner(String line) {
