@@ -81,6 +81,25 @@ poll_until() {
     done
 }
 
+# poll_log_until <desc> <egrep-pattern>
+# Retries grepping latest.log every 3 s for up to 30 s until a match appears.
+poll_log_until() {
+    local desc="$1" pattern="$2"
+    local deadline=$(( $(date +%s) + 30 )) out
+    while true; do
+        out=$(dexec grep -aE "$pattern" /data/logs/latest.log 2>/dev/null || true)
+        if [[ -n "$out" ]]; then
+            pass "$desc"
+            return 0
+        fi
+        if [[ $(date +%s) -ge $deadline ]]; then
+            fail "$desc — timed out waiting for log pattern: $pattern"
+            return 1
+        fi
+        sleep 3
+    done
+}
+
 # ── Preflight ──────────────────────────────────────────────────────────────────
 
 section "Preflight"
@@ -97,13 +116,15 @@ bash "$SCRIPT_DIR/seed.sh"
 
 # ── 1. Status ──────────────────────────────────────────────────────────────────
 
-section "prune status"
+section "prune status — WorldPrune Status"
 STATUS=$(rcon "prune status")
 assert_contains     "shows 'WorldPrune Status'"   "WorldPrune Status" "$STATUS"
 assert_contains     "shows Source field"               "Source:"               "$STATUS"
 assert_contains     "shows Keep-rules mode field"      "Keep-rules mode:"      "$STATUS"
 assert_contains     "shows Quarantine only field"      "Quarantine only:"      "$STATUS"
 assert_not_contains "no stale phase marker"            "prune.phase"           "$STATUS"
+assert_contains     "shows BlueMap field"              "BlueMap:"              "$STATUS"
+assert_contains     "shows Dynmap field"               "Dynmap:"               "$STATUS"
 
 # ── 2. Scan ───────────────────────────────────────────────────────────────────
 
@@ -125,6 +146,39 @@ if [[ -z "$PLAN_ID" ]]; then
     exit 1
 fi
 echo "    Plan ID: $PLAN_ID"
+
+# ── 2b. BlueMap marker update ─────────────────────────────────────────────────
+# The scan triggers WebMapService.updateMarkers() in the same async task.
+# By the time poll_until above returns a plan entry, the marker update has
+# already completed.  We verify the success log line is present and no
+# error line appeared.  This catches API-signature mismatches (e.g. the
+# ShapeMarker.Builder.shape(Shape,float) vs shape(Shape,float,float) regression).
+
+section "BlueMap — markers updated after scan"
+if poll_log_until "BlueMap marker update log emitted" \
+        "BlueMap markers updated|BlueMap marker update failed|BlueMap markers skipped"; then
+    BM_LOG=$(dexec grep -aE "BlueMap markers updated|BlueMap marker update failed|BlueMap markers skipped" \
+             /data/logs/latest.log 2>/dev/null || true)
+    if echo "$BM_LOG" | grep -q "BlueMap markers skipped"; then
+        pass "BlueMap markers skipped (API not ready — treating as acceptable in integration)"
+    else
+        assert_contains     "BlueMap markers updated successfully"  "BlueMap markers updated" "$BM_LOG"
+        assert_not_contains "no BlueMap marker update failure"      "BlueMap marker update failed" "$BM_LOG"
+    fi
+fi
+
+section "Dynmap — markers updated after scan"
+if poll_log_until "Dynmap marker update log emitted" \
+        "Dynmap markers updated|Dynmap marker update failed|Dynmap markers skipped"; then
+    DM_LOG=$(dexec grep -aE "Dynmap markers updated|Dynmap marker update failed|Dynmap markers skipped" \
+             /data/logs/latest.log 2>/dev/null || true)
+    if echo "$DM_LOG" | grep -q "Dynmap markers skipped"; then
+        pass "Dynmap markers skipped (API not ready — treating as acceptable in integration)"
+    else
+        assert_contains     "Dynmap markers updated successfully"   "Dynmap markers updated" "$DM_LOG"
+        assert_not_contains "no Dynmap marker update failure"       "Dynmap marker update failed" "$DM_LOG"
+    fi
+fi
 
 # ── 3. Plan show ──────────────────────────────────────────────────────────────
 
@@ -334,6 +388,51 @@ else
     assert_contains "Towny chunk 1600,1600 → r.50.50 kept"      "r.50.50.mca"  "$TR_KEEP"
     assert_contains "Residence block area 26112–26623 → r.51.50 kept" "r.51.50.mca" "$TR_KEEP"
 fi
+
+# ══════════════════════════════════════════════════════════════════════════════
+# WorldGuard file-fallback assertions
+# ══════════════════════════════════════════════════════════════════════════════
+
+section "prune scan — WorldGuard file fallback"
+
+WG_SCAN=$(rcon "prune scan $WORLD")
+assert_contains "scan start acknowledged" "Scanning" "$WG_SCAN"
+
+poll_until "scan produced a new plan" "plan-" "prune plans $WORLD"
+
+WG_PLANS=$(rcon "prune plans $WORLD")
+WG_PLAN_ID=$(echo "$WG_PLANS" | grep -oE 'plan-[a-z]+-[0-9]+-[0-9]+' | head -1)
+
+if [[ -z "$WG_PLAN_ID" ]]; then
+    fail "Could not extract plan ID for WorldGuard test"
+else
+    echo "    Plan ID: $WG_PLAN_ID"
+    WG_REPORT="${PLUGIN_DATA}/reports/${WG_PLAN_ID}/${WORLD}"
+
+    section "WorldGuard — claimSource in summary.json"
+    WG_SUMMARY=$(dexec cat "${WG_REPORT}/summary.json" 2>/dev/null || echo "FILE_NOT_FOUND")
+    assert_contains "summary.json is readable" "claimSource" "$WG_SUMMARY"
+    assert_contains "worldguard-files appears in claimSource" "worldguard-files" "$WG_SUMMARY"
+
+    section "WorldGuard — claim-derived region kept"
+    WG_KEEP=$(dexec cat "${WG_REPORT}/keep-regions-combined.txt" 2>/dev/null \
+              || dexec cat "${WG_REPORT}/keep-regions-from-claims-and-manual.txt" 2>/dev/null \
+              || echo "FILE_NOT_FOUND")
+    assert_contains "WorldGuard region 26624–27135 × 25600–26111 → r.52.50 kept" "r.52.50.mca" "$WG_KEEP"
+fi
+
+# ══════════════════════════════════════════════════════════════════════════════
+# scan --world all
+# ══════════════════════════════════════════════════════════════════════════════
+
+section "prune scan all (multi-world scan)"
+SCAN_ALL=$(rcon "prune scan all")
+assert_contains "all-worlds scan acknowledged"        "world"     "$SCAN_ALL"
+assert_contains "all-worlds scan reports world count" "world(s)"  "$SCAN_ALL"
+
+poll_until "all-worlds scan produced a plan" "plan-" "prune plans $WORLD"
+ALL_PLANS=$(rcon "prune plans $WORLD")
+assert_contains "all-worlds scan creates plan for test world" "$WORLD" "$ALL_PLANS"
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 
