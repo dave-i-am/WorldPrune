@@ -146,8 +146,9 @@ public final class PlanService {
     }
 
     /**
-     * Loads claims from all configured sources: GriefPrevention, Towny, and Residence.
-     * Each plugin's live API is tried first; the configured file path is used as fallback.
+     * Loads claims from all configured sources: GriefPrevention, Towny, Residence,
+     * and WorldGuard. Each plugin's live API is tried first; the configured file
+     * path is used as fallback.
      */
     private ClaimBoundsProvider.ClaimLoadResult loadAllClaims(World world) {
         Path serverPlugins = plugin.getServer().getWorldContainer().toPath().resolve("plugins");
@@ -160,7 +161,10 @@ public final class PlanService {
         Path residenceFile = resolvePathOrDefault(
                 plugin.getConfig().getString("claims.residence", ""),
                 serverPlugins.resolve("Residence/Save/Global.yml"));
-        return claimBoundsProvider.load(world, gpClaimDir, townyDir, residenceFile);
+        Path wgWorldsDir = resolvePathOrDefault(
+                plugin.getConfig().getString("claims.worldguard", ""),
+                serverPlugins.resolve("WorldGuard/worlds"));
+        return claimBoundsProvider.load(world, gpClaimDir, townyDir, residenceFile, wgWorldsDir);
     }
 
     private Path dataRoot() {
