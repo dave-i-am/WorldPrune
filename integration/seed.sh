@@ -150,4 +150,51 @@ with open(path, 'w') as f:
 print(f'  written {path}')
 "
 
+# ── 7. WorldGuard file-fallback fixture ───────────────────────────────────────
+# Creates a minimal regions.yml with one cuboid region covering block area
+# (26624–27135 × 25600–26111) → chunks (1664–1695 × 1600–1631) → region r.52.50.
+# Also seeds r.52.50.mca so it shows as a kept existing region file.
+echo "▶ Seeding WorldGuard regions.yml fixture (region r.52.50)..."
+docker exec -u minecraft "$CONTAINER" python3 -c "
+import os
+world = '${WORLD}'
+
+# Seed region file so r.52.50 exists as an existing .mca file
+for d in ('region', 'entities'):
+    os.makedirs(f'/data/{world}/{d}', exist_ok=True)
+    path = f'/data/{world}/{d}/r.52.50.mca'
+    if not os.path.exists(path):
+        open(path, 'wb').write(b'\x00' * 8192)
+        print(f'  created {path}')
+    else:
+        print(f'  exists  {path}')
+
+# Seed WorldGuard regions.yml
+wg_dir = f'/data/plugins/WorldGuard/worlds/{world}'
+os.makedirs(wg_dir, exist_ok=True)
+regions_path = os.path.join(wg_dir, 'regions.yml')
+content = '''regions:
+  __global__:
+    type: global
+    flags: {}
+    members:
+      uniqueIds: []
+    owners:
+      uniqueIds: []
+  wg_integration_test:
+    type: cuboid
+    min: {x: 26624, y: 0, z: 25600}
+    max: {x: 27135, y: 255, z: 26111}
+    priority: 0
+    flags: {}
+    members:
+      uniqueIds: []
+    owners:
+      uniqueIds: []
+'''
+with open(regions_path, 'w') as f:
+    f.write(content)
+print(f'  written {regions_path}')
+"
+
 echo "▶ Seed complete."
