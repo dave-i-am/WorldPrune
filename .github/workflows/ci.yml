@@ -66,8 +66,6 @@ jobs:
 
       - name: Run integration tests
         run: ./gradlew integration --no-daemon
-        env:
-          MINECRAFT_DATA_DIR: /tmp/minecraft-data
 
       - name: Server logs (on failure)
         if: failure()
