@@ -14,6 +14,19 @@
 
 * add Towny Advanced and Residence claim support ([542a308](https://github.com/dave-i-am/WorldPrune/commit/542a3084d5dec001b409e7c9ff98fd19871a5219))
 
+# [0.3.0](https://github.com/dave-i-am/WorldPrune/compare/v0.2.1...v0.3.0) (2026-04-28)
+
+
+### Bug Fixes
+
+* improve tab completion coverage across all subcommands ([e76131d](https://github.com/dave-i-am/WorldPrune/commit/e76131d97c3a3d2eb1152a1e856a86410cda3976))
+
+
+### Features
+
+* add /prune schedule command showing last/next run times per world ([95fa12e](https://github.com/dave-i-am/WorldPrune/commit/95fa12e8540c4b9d07ae40887ae68b93da00ea1f))
+* show disk size in /prune quarantine and /prune drop output ([4da7d6a](https://github.com/dave-i-am/WorldPrune/commit/4da7d6a4deb3763cf026d08f0e51c634f44e7305))
+
 # [0.3.0-beta.1](https://github.com/dave-i-am/WorldPrune/compare/v0.2.1...v0.3.0-beta.1) (2026-04-12)
 
 
