@@ -225,6 +225,112 @@ class ClaimBoundsProviderTest {
         assertEquals(2, result.claims().size()); // main area + sub-zone
     }
 
+    // ──────────────────────── WorldGuard file fallback ───────────────────────
+
+    @Test
+    void loadsWorldGuardRegionsFromInlineYaml() throws Exception {
+        Path wgWorldsDir = Files.createTempDirectory("wg-worlds-");
+        Path worldDir = wgWorldsDir.resolve("survival");
+        Files.createDirectories(worldDir);
+        String yaml =
+                "regions:\n" +
+                "  __global__:\n" +
+                "    type: global\n" +
+                "    flags: {}\n" +
+                "  myregion:\n" +
+                "    type: cuboid\n" +
+                "    min: {x: 100, y: 0, z: 200}\n" +
+                "    max: {x: 300, y: 255, z: 400}\n" +
+                "    priority: 0\n" +
+                "    flags: {}\n";
+        Files.writeString(worldDir.resolve("regions.yml"), yaml, StandardCharsets.UTF_8);
+
+        World world = mock(World.class);
+        when(world.getName()).thenReturn("survival");
+
+        ClaimBoundsProvider.ClaimLoadResult result =
+                new ClaimBoundsProvider().load(world, null, null, null, wgWorldsDir);
+
+        assertEquals("worldguard-files", result.source());
+        assertEquals(1, result.claims().size());
+        Rect r = result.claims().getFirst();
+        assertEquals(100, r.x1());
+        assertEquals(200, r.z1());
+        assertEquals(300, r.x2());
+        assertEquals(400, r.z2());
+    }
+
+    @Test
+    void loadsWorldGuardRegionsFromBlockYaml() throws Exception {
+        Path wgWorldsDir = Files.createTempDirectory("wg-block-");
+        Path worldDir = wgWorldsDir.resolve("survival");
+        Files.createDirectories(worldDir);
+        String yaml =
+                "regions:\n" +
+                "  farm:\n" +
+                "    type: cuboid\n" +
+                "    min:\n" +
+                "      x: -50\n" +
+                "      y: 0\n" +
+                "      z: -80\n" +
+                "    max:\n" +
+                "      x: 50\n" +
+                "      y: 255\n" +
+                "      z: 80\n" +
+                "    priority: 0\n";
+        Files.writeString(worldDir.resolve("regions.yml"), yaml, StandardCharsets.UTF_8);
+
+        World world = mock(World.class);
+        when(world.getName()).thenReturn("survival");
+
+        ClaimBoundsProvider.ClaimLoadResult result =
+                new ClaimBoundsProvider().load(world, null, null, null, wgWorldsDir);
+
+        assertEquals("worldguard-files", result.source());
+        assertEquals(1, result.claims().size());
+        Rect r = result.claims().getFirst();
+        assertEquals(-50, r.x1());
+        assertEquals(-80, r.z1());
+        assertEquals(50, r.x2());
+        assertEquals(80, r.z2());
+    }
+
+    @Test
+    void worldGuardSkipsGlobalRegion() throws Exception {
+        Path wgWorldsDir = Files.createTempDirectory("wg-global-");
+        Path worldDir = wgWorldsDir.resolve("survival");
+        Files.createDirectories(worldDir);
+        // Only a __global__ region — should produce no claims
+        String yaml =
+                "regions:\n" +
+                "  __global__:\n" +
+                "    type: global\n" +
+                "    flags: {}\n";
+        Files.writeString(worldDir.resolve("regions.yml"), yaml, StandardCharsets.UTF_8);
+
+        World world = mock(World.class);
+        when(world.getName()).thenReturn("survival");
+
+        ClaimBoundsProvider.ClaimLoadResult result =
+                new ClaimBoundsProvider().load(world, null, null, null, wgWorldsDir);
+
+        assertEquals("none", result.source());
+        assertTrue(result.claims().isEmpty());
+    }
+
+    @Test
+    void worldGuardIgnoresMissingDirectory() {
+        Path missing = Path.of(System.getProperty("java.io.tmpdir"), "no-wg-" + java.util.UUID.randomUUID());
+        World world = mock(World.class);
+        when(world.getName()).thenReturn("survival");
+
+        ClaimBoundsProvider.ClaimLoadResult result =
+                new ClaimBoundsProvider().load(world, null, null, null, missing);
+
+        assertEquals("none", result.source());
+        assertTrue(result.claims().isEmpty());
+    }
+
     // ───────────────────────── Multi-source merging ────────────────────────
 
     @Test
