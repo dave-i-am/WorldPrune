@@ -38,7 +38,7 @@ WorldPrunePlugin (bootstrap)
 All commands are read-only during planning phases. Destructive actions require a two-step staged confirmation (`/prune confirm`).
 
 ```
-/prune scan [world]              — analyse world and generate a plan
+/prune scan [world|all]          — analyse one or all worlds and generate a plan
 /prune plans [world]             — list stored plans
 /prune plan <planId>             — show plan details
 /prune apply [world] [--force-unlock]  — preview apply and stage for confirmation
@@ -57,8 +57,9 @@ All commands are read-only during planning phases. Destructive actions require a
 | [PlanService.java](src/main/java/dev/minecraft/prune/PlanService.java) | Claims-based planning (GriefPrevention API + file fallback + manual keep merge). | Outputs: keep-regions, prune-candidates, kept-existing, summary. Saves metadata to PlanStore. |
 | [HeuristicService.java](src/main/java/dev/minecraft/prune/HeuristicService.java) | Size and entity-aware heuristic filtering. | Two modes: `size` (threshold-based), `entity-aware` (payload scanning). Saves metadata to PlanStore. |
 | [PlanStore.java](src/main/java/dev/minecraft/prune/PlanStore.java) | Artifact metadata persistence (CSV index + per-plan metadata). | Keeps all plans queryable. Index lives at `<reports>/plans.index`. |
-| [ClaimBoundsProvider.java](src/main/java/dev/minecraft/prune/ClaimBoundsProvider.java) | GriefPrevention integration (reflection) + claim file parsing. | Gracefully falls back if GP API unavailable or not installed. |
+| [ClaimBoundsProvider.java](src/main/java/dev/minecraft/prune/ClaimBoundsProvider.java) | GriefPrevention, Towny, Residence, and WorldGuard integration (all via reflection) + file-based fallbacks. | Gracefully falls back if any API is unavailable or not installed. |
 | [CoreProtectProvider.java](src/main/java/dev/minecraft/prune/CoreProtectProvider.java) | Queries CoreProtect's SQLite `database.db` directly — no `api.enabled` requirement. `isAvailable()` returns true when the DB file exists. `hasRecentActivity(worldName, rx, rz, days)` runs a bounded `co_block` lookup. `sqlite-jdbc` is shaded into the plugin JAR. |
+| [WebMapService.java](src/main/java/dev/minecraft/prune/WebMapService.java) | Pushes keep/prune region markers to BlueMap (API v2) and Dynmap (3.x), both via reflection. Called after each scan. All errors are silent no-ops. `isBlueMapAvailable()` / `isDynmapAvailable()` drive the status output. |
 | [ApplyService.java](src/main/java/dev/minecraft/prune/ApplyService.java) | Quarantine-only region moves. Lock file, apply-manifest.json, idempotent re-run, stale lock detection/recovery.
 | [RestoreService.java](src/main/java/dev/minecraft/prune/RestoreService.java) | Manifest-guided restore. Optional `applyId` arg or latest. Renames manifest to `.restored.json` on completion.
 | [PurgeService.java](src/main/java/dev/minecraft/prune/PurgeService.java) | Permanent deletion of quarantine dirs. Lists ACTIVE/RESTORED/INCOMPLETE dirs. Token derived via `tokenForApply()`.
@@ -190,6 +191,7 @@ prune.admin        (default: op)  — scan, plans, plan, status
   - Missing claim-directory behavior
   - Towny file fallback: chunk-coord `.data` file parsing, world-name case-insensitivity, missing directory
   - Residence file fallback: `Global.yml` parsing, world filtering, sub-zone areas
+  - WorldGuard file fallback: inline `{x,y,z}` YAML, block-format YAML, `__global__` skipped, missing directory
   - Multi-source merge: GP + Towny combine into single `ClaimLoadResult`
 - [src/test/java/dev/minecraft/prune/HeuristicModeTest.java](src/test/java/dev/minecraft/prune/HeuristicModeTest.java)
   - CLI parsing stability and safe defaults
@@ -243,8 +245,11 @@ prune.admin        (default: op)  — scan, plans, plan, status
   - Returns false for activity outside the lookback window
   - Returns false (fail-open) on corrupt/empty DB file
   - Behaviour-override subclass pattern verified
+- [src/test/java/dev/minecraft/prune/WebMapServiceTest.java](src/test/java/dev/minecraft/prune/WebMapServiceTest.java)
+  - `parseRegionCoords()`: positive/negative coords, zero-zero, without `.mca` suffix, wrong extension, missing `r` prefix, too few parts, non-numeric coord, null input
+  - `updateMarkers()` graceful no-op when BlueMap and Dynmap are absent
 
-**Total: 133 automated tests passing.**
+**Total: 147 automated tests passing.**
 
 ### Integration Testing
 
@@ -258,7 +263,7 @@ brew install mise
 **Container**: `paper-test-server` is managed via `docker-compose.yml` at the repo root.  
 `docker-compose.yml` declares `MODRINTH_PROJECTS: coreprotect` — itzg downloads CoreProtect from Modrinth automatically on first container start, so no manual CP deployment is needed.  
 
-Configurable env vars: `MINECRAFT_CONTAINER`, `MINECRAFT_WORLD`, `MINECRAFT_DATA_DIR` (data volume path, defaults to `$HOME/minecraft-test-server/data`).
+Configurable env vars: `MINECRAFT_CONTAINER`, `MINECRAFT_WORLD`.
 
 **Gradle tasks:**
 
@@ -267,7 +272,7 @@ Configurable env vars: `MINECRAFT_CONTAINER`, `MINECRAFT_WORLD`, `MINECRAFT_DATA
 | `./gradlew build` | Compile + unit tests |
 | `./gradlew serverStart` | Start stopped container or create it fresh (polls RCON, up to 5 min) |
 | `./gradlew deploy` | Build then copy JAR into container |
-| `./gradlew serverReload` | `reload confirm` via rcon |
+| `./gradlew serverReload` | Restart container + wait for RCON readiness (Paper 1.21.4+ removed `/reload`) |
 | `./gradlew seed` | Create all fixture `.mca` files + seed CoreProtect DB |
 | `./gradlew integrationTest` | Run `integration/run.sh` against an already-running container |
 | `./gradlew integration` | Full suite: serverStart → deploy → serverReload → seed → integrationTest → serverStop |
@@ -283,20 +288,23 @@ Configurable env vars: `MINECRAFT_CONTAINER`, `MINECRAFT_WORLD`, `MINECRAFT_DATA
 MINECRAFT_CONTAINER=my-server MINECRAFT_WORLD=survival ./gradlew integrationTest
 ```
 
-**Test script** — `integration/run.sh` covers 77 assertions (47 standard + 18 CoreProtect + 12 Towny/Residence):
+**Test script** — `integration/run.sh` covers ~95 assertions (47 standard + 18 CoreProtect + 12 Towny/Residence + 8 WorldGuard + 5 BlueMap/Dynmap status + 5 scan-all):
 - `status`, `scan`, `plans`, `plan <id>`
 - `apply` preview + staged `confirm`
 - quarantine listing (ACTIVE), `undo` (RESTORED), `drop` + confirm + gone
 - `confirm` with nothing pending; unknown subcommand; missing arg
 - CoreProtect: status shows active, scan rescues r.0.0, prunes r.1.0
 - `summary.json` contains non-zero `coreprotectRescued`
+- BlueMap / Dynmap: status shows BlueMap: and Dynmap: lines
+- `/prune scan all`: scans all loaded worlds, plan created for test world
 
 **Seed script** — `integration/seed.sh` creates all fixtures in one pass:
 - `r.100.100.mca`, `r.101.100.mca` — far-from-spawn prune candidates
 - `r.0.0.mca`, `r.1.0.mca` — CoreProtect fixture regions
 - Seeds CoreProtect DB with block activity at (256, 64, 256) → rescues r.0.0
 - `plugins/Towny/data/townblocks/world_1600_1600.data` — Towny file-fallback fixture → keeps r.50.50
-- `plugins/Residence/Save/Global.yml` with a residence at blocks (1632–1647, 1600–1615) → keeps r.51.50
+- `plugins/Residence/Save/Global.yml` with a residence at blocks (26112–26623 × 25600–26111) → keeps r.51.50
+- `plugins/WorldGuard/worlds/world/regions.yml` with cuboid region at blocks (26624–27135 × 25600–26111) → keeps r.52.50; also seeds `r.52.50.mca`
 
 ### Unit Testing
 - Run with `./gradlew test`.
