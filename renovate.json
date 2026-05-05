@@ -5,30 +5,31 @@
     "papermc": {
       "defaultRegistryUrlTemplate": "https://api.papermc.io/v2/projects/paper",
       "transformTemplates": [
-        "{\"releases\": $map($.versions, function($v) {{\"version\": $v}}), \"sourceUrl\": \"https://papermc.io\"}"
+        "{\"releases\": $.versions.{\"version\": $}, \"sourceUrl\": \"https://papermc.io\"}"
       ]
     },
     "modrinth-coreprotect": {
       "defaultRegistryUrlTemplate": "https://api.modrinth.com/v2/project/coreprotect/version",
       "transformTemplates": [
-        "{\"releases\": $map($, function($v) {{\"version\": $v.id, \"releaseTimestamp\": $v.date_published, \"changelogUrl\": \"https://modrinth.com/plugin/coreprotect/version/\" & $v.id}}), \"sourceUrl\": \"https://modrinth.com/plugin/coreprotect\"}"
+        "{\"releases\": $.{\"version\": version_number, \"releaseTimestamp\": date_published, \"changelogUrl\": \"https://modrinth.com/plugin/coreprotect/version/\" & id}, \"sourceUrl\": \"https://modrinth.com/plugin/coreprotect\"}"
       ]
     },
     "modrinth-bluemap": {
       "defaultRegistryUrlTemplate": "https://api.modrinth.com/v2/project/bluemap/version?loaders=%5B%22paper%22%5D",
       "transformTemplates": [
-        "{\"releases\": $map($, function($v) {{\"version\": $v.id, \"releaseTimestamp\": $v.date_published, \"changelogUrl\": \"https://modrinth.com/plugin/bluemap/version/\" & $v.id}}), \"sourceUrl\": \"https://modrinth.com/plugin/bluemap\"}"
+        "{\"releases\": $.{\"version\": version_number, \"releaseTimestamp\": date_published, \"changelogUrl\": \"https://modrinth.com/plugin/bluemap/version/\" & id}, \"sourceUrl\": \"https://modrinth.com/plugin/bluemap\"}"
       ]
     },
     "modrinth-dynmap": {
       "defaultRegistryUrlTemplate": "https://api.modrinth.com/v2/project/dynmap/version?loaders=%5B%22paper%22%5D",
       "transformTemplates": [
-        "{\"releases\": $map($, function($v) {{\"version\": $v.id, \"releaseTimestamp\": $v.date_published, \"changelogUrl\": \"https://modrinth.com/plugin/dynmap/version/\" & $v.id}}), \"sourceUrl\": \"https://modrinth.com/plugin/dynmap\"}"
+        "{\"releases\": $.{\"version\": version_number, \"releaseTimestamp\": date_published, \"changelogUrl\": \"https://modrinth.com/plugin/dynmap/version/\" & id}, \"sourceUrl\": \"https://modrinth.com/plugin/dynmap\"}"
       ]
     }
   },
-  "regexManagers": [
+  "customManagers": [
     {
+      "customType": "regex",
       "description": "Update Minecraft server version in docker-compose.yml",
       "fileMatch": ["^docker-compose\\.yml$"],
       "matchStrings": ["VERSION: \"(?<currentValue>[0-9]+\\.[0-9]+(?:\\.[0-9]+)?)\""],
@@ -37,25 +38,28 @@
       "versioningTemplate": "semver-coerced"
     },
     {
+      "customType": "regex",
       "description": "Update coreprotect Modrinth version pin in docker-compose.yml",
       "fileMatch": ["^docker-compose\\.yml$"],
-      "matchStrings": ["coreprotect:(?<currentValue>[A-Za-z0-9]+)"],
+      "matchStrings": ["coreprotect:(?<currentValue>[A-Za-z0-9][A-Za-z0-9.\\-]*)"],
       "depNameTemplate": "coreprotect",
       "datasourceTemplate": "custom.modrinth-coreprotect",
       "versioningTemplate": "loose"
     },
     {
+      "customType": "regex",
       "description": "Update bluemap Modrinth version pin in docker-compose.yml",
       "fileMatch": ["^docker-compose\\.yml$"],
-      "matchStrings": ["bluemap:(?<currentValue>[A-Za-z0-9]+)"],
+      "matchStrings": ["bluemap:(?<currentValue>[A-Za-z0-9][A-Za-z0-9.\\-]*)"],
       "depNameTemplate": "bluemap",
       "datasourceTemplate": "custom.modrinth-bluemap",
       "versioningTemplate": "loose"
     },
     {
+      "customType": "regex",
       "description": "Update dynmap Modrinth version pin in docker-compose.yml",
       "fileMatch": ["^docker-compose\\.yml$"],
-      "matchStrings": ["dynmap:(?<currentValue>[A-Za-z0-9]+)"],
+      "matchStrings": ["dynmap:(?<currentValue>[A-Za-z0-9][A-Za-z0-9.\\-]*)"],
       "depNameTemplate": "dynmap",
       "datasourceTemplate": "custom.modrinth-dynmap",
       "versioningTemplate": "loose"
