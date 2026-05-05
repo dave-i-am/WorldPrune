@@ -15,8 +15,11 @@ jobs:
   release:
     name: Semantic release
     runs-on: ubuntu-latest
-    # Skip the automated version-bump commit that semantic-release pushes back
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    # Skip only when semantic-release itself pushes the version-bump commit back.
+    # Checking the actor (not the commit message) is correct for rebase-merge workflows:
+    # the [skip ci] release commit from develop becomes HEAD of main after a rebase merge,
+    # so a message-based check would wrongly suppress the stable release.
+    if: "github.event_name == 'workflow_dispatch' || github.actor != 'github-actions[bot]'"
 
     steps:
       - uses: actions/checkout@v6
@@ -45,3 +48,13 @@ jobs:
           # and store it as a repository secret named RELEASE_PAT.
           GITHUB_TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
         run: npx semantic-release
+
+      - name: Sync release commit back to develop
+        if: github.ref == 'refs/heads/main'
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          git fetch origin
+          git checkout develop
+          git merge --ff-only origin/main || git merge -X theirs origin/main
+          git push origin develop
