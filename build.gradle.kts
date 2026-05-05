@@ -62,7 +62,7 @@ checkstyle {
 }
 
 spotbugs {
-    toolVersion = "4.9.3"
+    toolVersion = "4.9.8"
     excludeFilter = file("config/spotbugs/exclude.xml")
     ignoreFailures = false
 }
