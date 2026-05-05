@@ -3,6 +3,7 @@ name: Release
 on:
   push:
     branches: [main, develop]
+  workflow_dispatch:
 
 # semantic-release needs to push commits + create releases
 permissions:
