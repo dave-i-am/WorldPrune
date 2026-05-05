@@ -1,3 +1,12 @@
+## [0.4.1-beta.1](https://github.com/dave-i-am/WorldPrune/compare/v0.4.0...v0.4.1-beta.1) (2026-05-05)
+
+
+### Bug Fixes
+
+* **deps:** update dependency checkstyle to v10.26.1 ([ee29088](https://github.com/dave-i-am/WorldPrune/commit/ee290888d330912fecec96111ea8daf890fe01e9))
+* **deps:** update dependency org.mockbukkit.mockbukkit:mockbukkit-v1.21 to v4.109.0 ([d49a2c6](https://github.com/dave-i-am/WorldPrune/commit/d49a2c68c7c6360f98db92a613a85b80a707d7c9))
+* **deps:** update dependency spotbugs to v4.9.8 ([b39f83e](https://github.com/dave-i-am/WorldPrune/commit/b39f83e8de3b58fcda13736f21932655d64393ff))
+
 # [0.4.0](https://github.com/dave-i-am/WorldPrune/compare/v0.3.0...v0.4.0) (2026-05-05)
 
 
