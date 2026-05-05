@@ -1,3 +1,13 @@
+# [0.4.0](https://github.com/dave-i-am/WorldPrune/compare/v0.3.0...v0.4.0) (2026-05-05)
+
+
+### Features
+
+* add /prune scan all and web-map async safety ([d4810ef](https://github.com/dave-i-am/WorldPrune/commit/d4810ef6f1d9c98c3aef0a6e64f5807a8375f183))
+* add Towny Advanced and Residence claim support ([57e7877](https://github.com/dave-i-am/WorldPrune/commit/57e78776f494bdcb932aef70fbab2bfde45170b5))
+* **claims:** add WorldGuard region support ([9af94b8](https://github.com/dave-i-am/WorldPrune/commit/9af94b8b833b1415f6a4dbf3867b575ee82348a2))
+* **map:** add BlueMap and Dynmap web-map overlay ([f57d649](https://github.com/dave-i-am/WorldPrune/commit/f57d649a05eeb3590388cb451171da7e1d9f3c40))
+
 # [0.4.0-beta.1](https://github.com/dave-i-am/WorldPrune/compare/v0.3.0...v0.4.0-beta.1) (2026-05-04)
 
 
