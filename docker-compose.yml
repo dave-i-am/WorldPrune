@@ -12,7 +12,7 @@ services:
       RCON_PORT: "25575"
       # itzg downloads these from Modrinth on startup; pinned to exact version numbers
       # so the test environment is reproducible.  Renovate keeps these current.
-      MODRINTH_PROJECTS: "coreprotect:23.1,bluemap:5.14-paper,dynmap:3.7-beta-8"
+      MODRINTH_PROJECTS: "coreprotect:23.1,bluemap:5.20-paper,dynmap:3.7-beta-8"
     ports:
       - "25565:25565"
     stdin_open: true
