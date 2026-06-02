@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   workflow_dispatch:
 
 # semantic-release needs to push commits + create releases
@@ -16,9 +16,8 @@ jobs:
     name: Semantic release
     runs-on: ubuntu-latest
     # Skip only when semantic-release itself pushes the version-bump commit back.
-    # Checking the actor (not the commit message) is correct for rebase-merge workflows:
-    # the [skip ci] release commit from develop becomes HEAD of main after a rebase merge,
-    # so a message-based check would wrongly suppress the stable release.
+    # Checking the actor (not the commit message) avoids suppressing stable releases
+    # when the release commit becomes HEAD on main after rebases/merges.
     if: "github.event_name == 'workflow_dispatch' || github.actor != 'github-actions[bot]'"
 
     steps:
