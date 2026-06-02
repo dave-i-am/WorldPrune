@@ -40,9 +40,7 @@ public final class PruneCommand implements TabExecutor {
     private final PurgeService purgeService;
     private final PlanStore planStore;
     private final Map<String, PendingConfirm> pendingConfirms = new ConcurrentHashMap<>();
-    private CoreProtectProvider coreProtectProvider; // optional – set after construction
     private ScheduleService scheduleService;         // optional – set after construction
-    private WebMapService webMapService;             // optional – set after construction
 
     public PruneCommand(WorldPrunePlugin plugin, PlanService planService, HeuristicService heuristicService, ApplyService applyService, RestoreService restoreService, PurgeService purgeService, PlanStore planStore) {
         this.plugin = plugin;
@@ -54,16 +52,8 @@ public final class PruneCommand implements TabExecutor {
         this.planStore = planStore;
     }
 
-    void setCoreProtectProvider(CoreProtectProvider provider) {
-        this.coreProtectProvider = provider;
-    }
-
     void setScheduleService(ScheduleService svc) {
         this.scheduleService = svc;
-    }
-
-    void setWebMapService(WebMapService svc) {
-        this.webMapService = svc;
     }
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
@@ -267,7 +257,6 @@ public final class PruneCommand implements TabExecutor {
             case "claims" -> {
                 PlanResult planRes = planService.generatePlan(world, marginChunks);
                 displayPlanResult(sender, planRes, world);
-                scheduleWebMapUpdate(world, planRes.planId());
                 return true;
             }
             case "keepRules" -> {
@@ -277,7 +266,6 @@ public final class PruneCommand implements TabExecutor {
             case "combined" -> {
                 PlanResult planRes = planService.generateCombinedPlan(world, marginChunks, mode);
                 displayPlanResult(sender, planRes, world);
-                scheduleWebMapUpdate(world, planRes.planId());
                 return true;
             }
             default -> {
@@ -289,22 +277,6 @@ public final class PruneCommand implements TabExecutor {
 
     private boolean isValidSource(String source) {
         return "claims".equals(source) || "keeprules".equals(source) || "combined".equals(source);
-    }
-
-    private void scheduleWebMapUpdate(World world, String planId) {
-        if (webMapService == null) return;
-
-        Path planDir = planStore.getPlanReportDir(planId).toPath();
-        WebMapService.MarkerInputs markerInputs;
-        try {
-            // Read plan files off-thread; only plugin API calls run on the main thread.
-            markerInputs = webMapService.readMarkerInputs(world, planDir);
-        } catch (IOException e) {
-            plugin.getLogger().fine("[WebMapService] Could not read plan files: " + e.getMessage());
-            return;
-        }
-
-        Bukkit.getScheduler().runTask(plugin, () -> webMapService.updateMarkers(world, markerInputs));
     }
 
     // ─────────────────────── PLAN LIST / SHOW ────────────────────────────────
@@ -685,18 +657,6 @@ public final class PruneCommand implements TabExecutor {
         sender.sendMessage("§7Claim margin:   §f" + plugin.getConfig().getInt("claims.marginChunks", 5) + " chunks");
         sender.sendMessage("§7Quarantine only:§f" + plugin.getConfig().getBoolean("safety.quarantineOnly", true));
         sender.sendMessage("§7Confirm token:  §f" + plugin.getConfig().getBoolean("safety.requireConfirmToken", true));
-        if (coreProtectProvider != null && coreProtectProvider.isAvailable()) {
-            int days = plugin.getConfig().getInt("coreprotect.activityLookbackDays", 180);
-            sender.sendMessage("§7CoreProtect:    §aactive §7(§f" + days + "§7-day lookback)");
-        } else {
-            sender.sendMessage("§7CoreProtect:    §7inactive");
-        }
-        if (webMapService != null) {
-            sender.sendMessage("§7BlueMap:        §f"
-                    + (webMapService.isBlueMapAvailable() ? "§aactive" : "§7inactive"));
-            sender.sendMessage("§7Dynmap:         §f"
-                    + (webMapService.isDynmapAvailable()  ? "§aactive" : "§7inactive"));
-        }
         sender.sendMessage(" ");
         try {
             List<PlanStore.PlanMetadata> recent = planStore.listPlans(null);

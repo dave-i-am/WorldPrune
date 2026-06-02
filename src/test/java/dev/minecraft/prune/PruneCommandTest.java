@@ -77,7 +77,7 @@ class PruneCommandTest {
     void noArgs_showsUsage() {
         PlayerMock player = opPlayer();
         dispatch(player);
-        player.assertSaid("§e/prune scan §7[world]              §f- Analyse world and generate a plan");
+        player.assertSaid("§e/prune scan §7[world|all]          §f- Analyse world(s) and generate a plan");
     }
 
     @Test
@@ -100,7 +100,8 @@ class PruneCommandTest {
         player.nextMessage(); // claim margin
         player.nextMessage(); // quarantine only
         player.nextMessage(); // confirm token
-        player.assertSaid("§7CoreProtect:    §7inactive"); // CP not installed in test env
+        player.nextMessage(); // spacer
+        player.assertSaid("§7No plans yet. Run §f/prune scan§7.");
     }
 
     // ── plans ─────────────────────────────────────────────────────────────────
