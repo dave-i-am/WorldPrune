@@ -13,8 +13,6 @@ WorldPrune is an operator-only Paper/Spigot plugin that identifies region files 
   - [Towny Advanced](https://github.com/TownyAdvanced/Towny) — API queried directly; falls back to townblock `.data` file parsing
   - [Residence](https://www.spigotmc.org/resources/residence.11480/) — API queried directly; falls back to `Global.yml` parsing
   - [WorldGuard](https://dev.enginehub.org/worldguard/) — API queried directly (requires WorldEdit); falls back to per-world `regions.yml` parsing
-- [CoreProtect](https://www.spigotmc.org/resources/coreprotect.8631/) (optional) — rescues unclaimed regions with recent player activity
-- [BlueMap](https://bluemap.bluecolored.de/) or [Dynmap](https://www.spigotmc.org/resources/dynmap.274/) (optional) — region markers pushed to the web map after each scan
 
 ## Installation
 
