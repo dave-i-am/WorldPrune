@@ -28,15 +28,10 @@ public final class HeuristicService {
 
     private final WorldPrunePlugin plugin;
     private final PlanStore planStore;
-    private CoreProtectProvider coreProtectProvider; // null when CoreProtect is absent
 
     public HeuristicService(WorldPrunePlugin plugin, PlanStore planStore) {
         this.plugin = plugin;
         this.planStore = planStore;
-    }
-
-    void setCoreProtectProvider(CoreProtectProvider provider) {
-        this.coreProtectProvider = provider;
     }
 
     public HeuristicResult run(World world, HeuristicMode mode) throws IOException {
@@ -75,8 +70,6 @@ public final class HeuristicService {
         Set<String> prune = new HashSet<>(allRegionNames);
         prune.removeAll(keep);
 
-        int cpRescued = applyCoreProtectRescue(world.getName(), keep, prune);
-
         List<String> keepSorted = keep.stream().sorted().toList();
         List<String> pruneSorted = prune.stream().sorted().toList();
         List<String> detailsSorted = details.stream().sorted(Comparator.naturalOrder()).toList();
@@ -92,7 +85,6 @@ public final class HeuristicService {
         summaryFields.put("keepRegions", keep.size());
         summaryFields.put("pruneCandidates", prune.size());
         summaryFields.put("reclaimableGiBEstimate", reclaimableGiB);
-        if (cpRescued > 0) summaryFields.put("coreprotectRescued", cpRescued);
         write(reportDir.resolve("summary.json"), JsonUtil.toJson(summaryFields));
 
         // Save metadata to artifact store
@@ -118,11 +110,8 @@ public final class HeuristicService {
     /**
      * Package-private: compute the keep set for the given mode without writing
      * any report files. Used by PlanService for combined plans.
-     *
-     * Returns a {@link ComputeResult} containing the keep set and the number of
-     * regions rescued by the CoreProtect rescue pass (0 if CP is absent).
      */
-    ComputeResult computeKeepRegions(World world, HeuristicMode mode) throws IOException {
+    Set<String> computeKeepRegions(World world, HeuristicMode mode) throws IOException {
         Path worldFolder = world.getWorldFolder().toPath();
         Path regionDir = worldFolder.resolve("region");
         Path entitiesDir = worldFolder.resolve("entities");
@@ -135,19 +124,8 @@ public final class HeuristicService {
             keep = new HashSet<>(evaluateEntityAwareMode(entitiesDir, readEntityAwareSettings()).keepRegions());
         }
 
-        int cpRescued = 0;
-        if (coreProtectProvider != null && coreProtectProvider.isAvailable()) {
-            Set<String> allRegionNames = listAllRegionNames(regionDir, entitiesDir, poiDir);
-            Set<String> prune = new HashSet<>(allRegionNames);
-            prune.removeAll(keep);
-            cpRescued = applyCoreProtectRescue(world.getName(), keep, prune);
-        }
-
-        return new ComputeResult(keep, cpRescued);
+        return keep;
     }
-
-    /** Result of {@link #computeKeepRegions}: the keep set plus the CoreProtect rescue tally. */
-    record ComputeResult(Set<String> keepRegions, int cpRescued) {}
 
     private Path dataRoot() {
         String configured = plugin.getConfig().getString("storage.dataRoot", "");
@@ -323,43 +301,6 @@ public final class HeuristicService {
             total += safeSize(dir.resolve(fileName));
         }
         return total;
-    }
-
-    /**
-     * Checks CoreProtect for recent player activity in each prune-candidate region
-     * and moves any active regions from {@code prune} into {@code keep}.
-     * Package-private so unit tests can call it directly with fake sets.
-     *
-     * @return the number of regions rescued by CoreProtect
-     */
-    int applyCoreProtectRescue(String worldName, Set<String> keep, Set<String> prune) {
-        if (coreProtectProvider == null || !coreProtectProvider.isAvailable()) return 0;
-        int lookbackDays = plugin != null
-                ? plugin.getConfig().getInt("coreprotect.activityLookbackDays", 180)
-                : 180;
-
-        Map<String, int[]> candidates = new LinkedHashMap<>();
-        for (String regionFile : prune) {
-            int[] coords = MapVisualizer.parseRegionName(regionFile);
-            if (coords != null) {
-                candidates.put(regionFile, coords);
-            }
-        }
-
-        Set<String> active = coreProtectProvider.findRegionsWithRecentActivity(
-                worldName, candidates, lookbackDays);
-        return applyRescuedRegions(keep, prune, active);
-    }
-
-    private int applyRescuedRegions(Set<String> keep, Set<String> prune, Set<String> rescuedRegions) {
-        int rescued = 0;
-        for (String regionFile : rescuedRegions) {
-            if (prune.remove(regionFile)) {
-                keep.add(regionFile);
-                rescued++;
-            }
-        }
-        return rescued;
     }
 
     private long safeSize(Path file) {

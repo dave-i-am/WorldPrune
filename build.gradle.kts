@@ -20,7 +20,6 @@ repositories {
 dependencies {
     compileOnly("org.spigotmc:spigot-api:$spigotVersion")
     // sqlite-jdbc is shaded into the JAR (see shadowJar task below).
-    // Querying CoreProtect's database.db directly means no api.enabled requirement.
     implementation("org.xerial:sqlite-jdbc:3.53.0.0")
 
     testImplementation("org.junit.jupiter:junit-jupiter:6.0.3")
@@ -99,6 +98,11 @@ tasks.named("assemble") {
 
 val mcContainer  = System.getenv("MINECRAFT_CONTAINER") ?: "paper-test-server"
 val mcWorld      = System.getenv("MINECRAFT_WORLD")     ?: "world"
+val mcVersion    = System.getenv("MINECRAFT_VERSION")   ?: "1.21.4"
+val modrinthProjects = System.getenv("MODRINTH_PROJECTS")
+    ?: ""
+val paperPluginUrls = System.getenv("PAPER_PLUGIN_URLS")
+    ?: ""
 val pluginJar    = "build/libs/world-prune-plugin-${project.version}.jar"
 val containerJar = "/data/plugins/world-prune-plugin-${project.version}.jar"
 
@@ -114,14 +118,8 @@ tasks.register<Exec>("serverStart") {
           # *.download temp files from a crashed previous run) don't prevent
           # Modrinth plugin downloads from succeeding.
           docker compose down --remove-orphans --volumes 2>/dev/null || true
-          docker compose up -d
-          # Seed CoreProtect CE config immediately after container starts.
-          # /data is available as soon as the container runs; we copy before Paper
-          # loads plugins so CoreProtect sees project_branch=development on first boot.
+          MINECRAFT_VERSION="$mcVersion" MODRINTH_PROJECTS="$modrinthProjects" PAPER_PLUGIN_URLS="$paperPluginUrls" docker compose up -d
           until docker exec $mcContainer test -d /data 2>/dev/null; do sleep 1; done
-          docker exec -u 1000:1000 $mcContainer mkdir -p /data/plugins/CoreProtect
-          docker cp integration/fixtures/CoreProtect/config.yml $mcContainer:/data/plugins/CoreProtect/config.yml
-          docker exec $mcContainer chown 1000:1000 /data/plugins/CoreProtect/config.yml
           # Poll for RCON readiness instead of fixed sleep.
           # First-start may take 3+ minutes (Paper JAR remap + Modrinth downloads).
           echo "Waiting for server RCON to be ready (up to 5 min)..."
@@ -152,7 +150,7 @@ tasks.register<Exec>("serverReload") {
     group = "minecraft"
     commandLine("bash", "-c", """
         echo "Restarting $mcContainer to pick up new plugin JAR..."
-        docker compose restart
+        MINECRAFT_VERSION="$mcVersion" MODRINTH_PROJECTS="$modrinthProjects" PAPER_PLUGIN_URLS="$paperPluginUrls" docker compose restart
         echo "Waiting for server RCON to be ready (up to 5 min)..."
         deadline=$(( ${'$'}(date +%s) + 300 ))
         until docker exec $mcContainer rcon-cli list >/dev/null 2>&1; do
@@ -195,7 +193,7 @@ tasks.register<Exec>("integrationTest") {
 }
 
 tasks.register<Exec>("seed") {
-    description = "Seed all integration test fixtures (prune-candidate regions + CoreProtect DB)"
+    description = "Seed integration test fixtures"
     group = "verification"
     commandLine("bash", "integration/seed.sh")
     environment(mapOf(

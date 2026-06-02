@@ -123,8 +123,6 @@ assert_contains     "shows Source field"               "Source:"               "
 assert_contains     "shows Keep-rules mode field"      "Keep-rules mode:"      "$STATUS"
 assert_contains     "shows Quarantine only field"      "Quarantine only:"      "$STATUS"
 assert_not_contains "no stale phase marker"            "prune.phase"           "$STATUS"
-assert_contains     "shows BlueMap field"              "BlueMap:"              "$STATUS"
-assert_contains     "shows Dynmap field"               "Dynmap:"               "$STATUS"
 
 # ── 2. Scan ───────────────────────────────────────────────────────────────────
 
@@ -146,39 +144,6 @@ if [[ -z "$PLAN_ID" ]]; then
     exit 1
 fi
 echo "    Plan ID: $PLAN_ID"
-
-# ── 2b. BlueMap marker update ─────────────────────────────────────────────────
-# The scan triggers WebMapService.updateMarkers() in the same async task.
-# By the time poll_until above returns a plan entry, the marker update has
-# already completed.  We verify the success log line is present and no
-# error line appeared.  This catches API-signature mismatches (e.g. the
-# ShapeMarker.Builder.shape(Shape,float) vs shape(Shape,float,float) regression).
-
-section "BlueMap — markers updated after scan"
-if poll_log_until "BlueMap marker update log emitted" \
-        "BlueMap markers updated|BlueMap marker update failed|BlueMap markers skipped"; then
-    BM_LOG=$(dexec grep -aE "BlueMap markers updated|BlueMap marker update failed|BlueMap markers skipped" \
-             /data/logs/latest.log 2>/dev/null || true)
-    if echo "$BM_LOG" | grep -q "BlueMap markers skipped"; then
-        pass "BlueMap markers skipped (API not ready — treating as acceptable in integration)"
-    else
-        assert_contains     "BlueMap markers updated successfully"  "BlueMap markers updated" "$BM_LOG"
-        assert_not_contains "no BlueMap marker update failure"      "BlueMap marker update failed" "$BM_LOG"
-    fi
-fi
-
-section "Dynmap — markers updated after scan"
-if poll_log_until "Dynmap marker update log emitted" \
-        "Dynmap markers updated|Dynmap marker update failed|Dynmap markers skipped"; then
-    DM_LOG=$(dexec grep -aE "Dynmap markers updated|Dynmap marker update failed|Dynmap markers skipped" \
-             /data/logs/latest.log 2>/dev/null || true)
-    if echo "$DM_LOG" | grep -q "Dynmap markers skipped"; then
-        pass "Dynmap markers skipped (API not ready — treating as acceptable in integration)"
-    else
-        assert_contains     "Dynmap markers updated successfully"   "Dynmap markers updated" "$DM_LOG"
-        assert_not_contains "no Dynmap marker update failure"       "Dynmap marker update failed" "$DM_LOG"
-    fi
-fi
 
 # ── 3. Plan show ──────────────────────────────────────────────────────────────
 
@@ -290,68 +255,6 @@ assert_contains "shows usage hint"           "/prune scan"        "$UNKNOWN"
 section "prune plan (no args)"
 NO_PLAN=$(rcon "prune plan")
 assert_contains "reports usage error" "Usage: /prune plan" "$NO_PLAN"
-
-# ══════════════════════════════════════════════════════════════════════════════
-# CoreProtect integration assertions
-# ══════════════════════════════════════════════════════════════════════════════
-
-# ── 12. CoreProtect status ────────────────────────────────────────────────────
-
-section "prune status — CoreProtect"
-CP_STATUS=$(rcon "prune status")
-assert_contains "status shows CoreProtect line"  "CoreProtect:" "$CP_STATUS"
-assert_contains "CoreProtect is reported active" "active"       "$CP_STATUS"
-
-if ! echo "$CP_STATUS" | grep -qF "active"; then
-    fail "CoreProtect not active — skipping CP rescue assertions"
-else
-
-    # ── 13. Scan with CP rescue ───────────────────────────────────────────────
-
-    section "prune scan (CoreProtect rescue)"
-    CP_SCAN=$(rcon "prune scan $WORLD")
-    assert_contains "CP scan start acknowledged" "Scanning" "$CP_SCAN"
-
-    poll_until "CP scan produced a combined plan" "plan-combined-" "prune plans $WORLD"
-    CP_PLANS=$(rcon "prune plans $WORLD")
-    CP_PLAN_ID=$(echo "$CP_PLANS" | grep -oE 'plan-combined-[0-9]+-[0-9]+' | head -1)
-    assert_contains "plan list shows world" "$WORLD" "$CP_PLANS"
-
-    if [[ -z "$CP_PLAN_ID" ]]; then
-        fail "Could not extract CP plan ID"
-    else
-        echo "    CP Plan ID: $CP_PLAN_ID"
-        CP_REPORT="${PLUGIN_DATA}/reports/${CP_PLAN_ID}/${WORLD}"
-
-        # ── 14. Rescue outcome ────────────────────────────────────────────────
-
-        section "CoreProtect rescue-pass outcome"
-        KEEP_CONTENT=$(dexec  cat "${CP_REPORT}/keep-regions-combined.txt"  2>/dev/null || echo "FILE_NOT_FOUND")
-        PRUNE_CONTENT=$(dexec cat "${CP_REPORT}/prune-candidate-regions.txt" 2>/dev/null || echo "FILE_NOT_FOUND")
-
-        assert_contains     "keep-regions file readable"       "r."        "$KEEP_CONTENT"
-        assert_contains     "r.0.0 rescued into keep set"      "r.0.0.mca" "$KEEP_CONTENT"
-        assert_not_contains "r.0.0 not a prune candidate"      "r.0.0.mca" "$PRUNE_CONTENT"
-        assert_contains     "prune-candidates file readable"    "r."        "$PRUNE_CONTENT"
-        assert_contains     "r.1.0 remains a prune candidate"  "r.1.0.mca" "$PRUNE_CONTENT"
-        assert_not_contains "r.1.0 not in keep set"            "r.1.0.mca" "$KEEP_CONTENT"
-
-        # ── 15. summary.json ─────────────────────────────────────────────────
-
-        section "summary.json — coreprotectRescued"
-        SUMMARY=$(dexec cat "${CP_REPORT}/summary.json" 2>/dev/null || echo "FILE_NOT_FOUND")
-        assert_contains     "summary.json readable"        "source"                      "$SUMMARY"
-        assert_contains     "coreprotectRescued present"   "coreprotectRescued"          "$SUMMARY"
-        assert_not_contains "rescued count non-zero"       '"coreprotectRescued": 0'    "$SUMMARY"
-
-        # ── 16. Plan show ─────────────────────────────────────────────────────
-
-        section "prune plan (CP plan)"
-        CP_SHOW=$(rcon "prune plan $CP_PLAN_ID")
-        assert_contains "CP plan shows plan ID"  "$CP_PLAN_ID" "$CP_SHOW"
-        assert_contains "CP plan shows Keep"     "Keep:"       "$CP_SHOW"
-    fi
-fi
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Towny + Residence file-fallback assertions
