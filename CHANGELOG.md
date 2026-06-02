@@ -1,3 +1,22 @@
+# [1.0.0](https://github.com/dave-i-am/WorldPrune/compare/v0.4.0...v1.0.0) (2026-06-02)
+
+
+* feat!: drop Minecraft 1.20.x support ([9673a21](https://github.com/dave-i-am/WorldPrune/commit/9673a213b7f0c58d6376ba6e8053dda4c5702d3d))
+* feat!: remove optional activity/map integrations ([cb13f58](https://github.com/dave-i-am/WorldPrune/commit/cb13f585ba17a8bed1ef5014f592fa58928352cd))
+
+
+### Bug Fixes
+
+* **deps:** update dependency checkstyle to v10.26.1 ([3c47d1f](https://github.com/dave-i-am/WorldPrune/commit/3c47d1fbd61755e68b2ce17c85e0dab8ac66ee58))
+* **deps:** update dependency org.mockbukkit.mockbukkit:mockbukkit-v1.21 to v4.109.0 ([715e160](https://github.com/dave-i-am/WorldPrune/commit/715e160d932897ab041843e4f3724cf06322e97f))
+* **deps:** update dependency spotbugs to v4.9.8 ([3e4deb2](https://github.com/dave-i-am/WorldPrune/commit/3e4deb2ae9044e3bfd76262da166f8f12ee22806))
+
+
+### BREAKING CHANGES
+
+* WorldPrune now targets Minecraft 1.21+ only.
+* CoreProtect, BlueMap, and Dynmap integrations were removed.
+
 ## [0.4.1-beta.1](https://github.com/dave-i-am/WorldPrune/compare/v0.4.0...v0.4.1-beta.1) (2026-05-05)
 
 
