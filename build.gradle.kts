@@ -98,11 +98,7 @@ tasks.named("assemble") {
 
 val mcContainer  = System.getenv("MINECRAFT_CONTAINER") ?: "paper-test-server"
 val mcWorld      = System.getenv("MINECRAFT_WORLD")     ?: "world"
-val mcVersion    = System.getenv("MINECRAFT_VERSION")   ?: "1.21.4"
-val modrinthProjects = System.getenv("MODRINTH_PROJECTS")
-    ?: ""
-val paperPluginUrls = System.getenv("PAPER_PLUGIN_URLS")
-    ?: ""
+val mcVersion    = System.getenv("MINECRAFT_VERSION")   ?: "26.1.1"
 val pluginJar    = "build/libs/world-prune-plugin-${project.version}.jar"
 val containerJar = "/data/plugins/world-prune-plugin-${project.version}.jar"
 
@@ -114,14 +110,13 @@ tasks.register<Exec>("serverStart") {
           echo "$mcContainer is already running."
         else
           echo "Starting $mcContainer via docker compose..."
-          # Always tear down first so stale anonymous volumes (e.g. left-over
-          # *.download temp files from a crashed previous run) don't prevent
-          # Modrinth plugin downloads from succeeding.
+                    # Always tear down first so stale anonymous volumes from a crashed
+                    # previous run do not leak into fresh integration starts.
           docker compose down --remove-orphans --volumes 2>/dev/null || true
-          MINECRAFT_VERSION="$mcVersion" MODRINTH_PROJECTS="$modrinthProjects" PAPER_PLUGIN_URLS="$paperPluginUrls" docker compose up -d
+                    MINECRAFT_VERSION="$mcVersion" docker compose up -d
           until docker exec $mcContainer test -d /data 2>/dev/null; do sleep 1; done
           # Poll for RCON readiness instead of fixed sleep.
-          # First-start may take 3+ minutes (Paper JAR remap + Modrinth downloads).
+                    # First-start may take 3+ minutes (Paper JAR remap).
           echo "Waiting for server RCON to be ready (up to 5 min)..."
           deadline=$(( ${'$'}(date +%s) + 300 ))
           until docker exec $mcContainer rcon-cli list >/dev/null 2>&1; do
@@ -150,7 +145,7 @@ tasks.register<Exec>("serverReload") {
     group = "minecraft"
     commandLine("bash", "-c", """
         echo "Restarting $mcContainer to pick up new plugin JAR..."
-        MINECRAFT_VERSION="$mcVersion" MODRINTH_PROJECTS="$modrinthProjects" PAPER_PLUGIN_URLS="$paperPluginUrls" docker compose restart
+        MINECRAFT_VERSION="$mcVersion" docker compose restart
         echo "Waiting for server RCON to be ready (up to 5 min)..."
         deadline=$(( ${'$'}(date +%s) + 300 ))
         until docker exec $mcContainer rcon-cli list >/dev/null 2>&1; do
