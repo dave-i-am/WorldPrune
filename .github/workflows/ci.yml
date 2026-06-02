@@ -11,13 +11,6 @@ jobs:
     strategy:
       matrix:
         spigot-version:
-          - "1.20-R0.1-SNAPSHOT"
-          - "1.20.1-R0.1-SNAPSHOT"
-          - "1.20.2-R0.1-SNAPSHOT"
-          - "1.20.3-R0.1-SNAPSHOT"
-          - "1.20.4-R0.1-SNAPSHOT"
-          - "1.20.5-R0.1-SNAPSHOT"
-          - "1.20.6-R0.1-SNAPSHOT"
           - "1.21-R0.1-SNAPSHOT"
           - "1.21.1-R0.1-SNAPSHOT"
           - "1.21.2-R0.1-SNAPSHOT"
