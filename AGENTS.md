@@ -58,8 +58,6 @@ All commands are read-only during planning phases. Destructive actions require a
 | [HeuristicService.java](src/main/java/dev/minecraft/prune/HeuristicService.java) | Size and entity-aware heuristic filtering. | Two modes: `size` (threshold-based), `entity-aware` (payload scanning). Saves metadata to PlanStore. |
 | [PlanStore.java](src/main/java/dev/minecraft/prune/PlanStore.java) | Artifact metadata persistence (CSV index + per-plan metadata). | Keeps all plans queryable. Index lives at `<reports>/plans.index`. |
 | [ClaimBoundsProvider.java](src/main/java/dev/minecraft/prune/ClaimBoundsProvider.java) | GriefPrevention, Towny, Residence, and WorldGuard integration (all via reflection) + file-based fallbacks. | Gracefully falls back if any API is unavailable or not installed. |
-| [CoreProtectProvider.java](src/main/java/dev/minecraft/prune/CoreProtectProvider.java) | Queries CoreProtect's SQLite `database.db` directly — no `api.enabled` requirement. `isAvailable()` returns true when the DB file exists. `hasRecentActivity(worldName, rx, rz, days)` runs a bounded `co_block` lookup. `sqlite-jdbc` is shaded into the plugin JAR. |
-| [WebMapService.java](src/main/java/dev/minecraft/prune/WebMapService.java) | Pushes keep/prune region markers to BlueMap (API v2) and Dynmap (3.x), both via reflection. Called after each scan. All errors are silent no-ops. `isBlueMapAvailable()` / `isDynmapAvailable()` drive the status output. |
 | [ApplyService.java](src/main/java/dev/minecraft/prune/ApplyService.java) | Quarantine-only region moves. Lock file, apply-manifest.json, idempotent re-run, stale lock detection/recovery.
 | [RestoreService.java](src/main/java/dev/minecraft/prune/RestoreService.java) | Manifest-guided restore. Optional `applyId` arg or latest. Renames manifest to `.restored.json` on completion.
 | [PurgeService.java](src/main/java/dev/minecraft/prune/PurgeService.java) | Permanent deletion of quarantine dirs. Lists ACTIVE/RESTORED/INCOMPLETE dirs. Token derived via `tokenForApply()`.
@@ -203,7 +201,6 @@ prune.admin        (default: op)  — scan, plans, plan, status
   - `minecraft:chest_minecart` explicitly excluded even when in strongEntityIds
   - Corrupt/undecompressable chunk → conservative keep
   - Mixed multi-file result; case-insensitive payload matching
-  - `applyCoreProtectRescue`: no provider, unavailable provider, activity detected, no activity, un-parseable filename, already-kept region not doubled
 - [src/test/java/dev/minecraft/prune/RectTest.java](src/test/java/dev/minecraft/prune/RectTest.java)
   - Coordinate normalization helpers
 - [src/test/java/dev/minecraft/prune/JsonUtilTest.java](src/test/java/dev/minecraft/prune/JsonUtilTest.java)
@@ -234,22 +231,8 @@ prune.admin        (default: op)  — scan, plans, plan, status
   - `confirm` with nothing staged
 - [src/test/java/dev/minecraft/prune/MapVisualizerParseTest.java](src/test/java/dev/minecraft/prune/MapVisualizerParseTest.java)
   - `parseRegionName()`: normal positive/negative coords, zero-zero, wrong extension, missing `r` prefix, too few/many parts, non-numeric coord, null input
-- [src/test/java/dev/minecraft/prune/CoreProtectProviderTest.java](src/test/java/dev/minecraft/prune/CoreProtectProviderTest.java)
-  - Unavailable when DB file does not exist
-  - Available when DB file exists
-  - Stub constructors (available/unavailable) for behaviour overrides
-  - `hasRecentActivity` returns false when unavailable
-  - Detects activity within region bounds and lookback window (real SQLite)
-  - Returns false for activity in a different region
-  - Returns false for activity in a different world
-  - Returns false for activity outside the lookback window
-  - Returns false (fail-open) on corrupt/empty DB file
-  - Behaviour-override subclass pattern verified
-- [src/test/java/dev/minecraft/prune/WebMapServiceTest.java](src/test/java/dev/minecraft/prune/WebMapServiceTest.java)
-  - `parseRegionCoords()`: positive/negative coords, zero-zero, without `.mca` suffix, wrong extension, missing `r` prefix, too few parts, non-numeric coord, null input
-  - `updateMarkers()` graceful no-op when BlueMap and Dynmap are absent
 
-**Total: 147 automated tests passing.**
+**Total: automated tests passing in CI.**
 
 ### Integration Testing
 
@@ -261,7 +244,6 @@ brew install mise
 ```
 
 **Container**: `paper-test-server` is managed via `docker-compose.yml` at the repo root.  
-`docker-compose.yml` declares `MODRINTH_PROJECTS: coreprotect` — itzg downloads CoreProtect from Modrinth automatically on first container start, so no manual CP deployment is needed.  
 
 Configurable env vars: `MINECRAFT_CONTAINER`, `MINECRAFT_WORLD`.
 
@@ -273,7 +255,7 @@ Configurable env vars: `MINECRAFT_CONTAINER`, `MINECRAFT_WORLD`.
 | `./gradlew serverStart` | Start stopped container or create it fresh (polls RCON, up to 5 min) |
 | `./gradlew deploy` | Build then copy JAR into container |
 | `./gradlew serverReload` | Restart container + wait for RCON readiness (Paper 1.21.4+ removed `/reload`) |
-| `./gradlew seed` | Create all fixture `.mca` files + seed CoreProtect DB |
+| `./gradlew seed` | Create integration fixture `.mca` files and claim-provider fixture data |
 | `./gradlew integrationTest` | Run `integration/run.sh` against an already-running container |
 | `./gradlew integration` | Full suite: serverStart → deploy → serverReload → seed → integrationTest → serverStop |
 | `./gradlew serverStop` | Destroy the container (`docker compose down`) |
@@ -288,20 +270,15 @@ Configurable env vars: `MINECRAFT_CONTAINER`, `MINECRAFT_WORLD`.
 MINECRAFT_CONTAINER=my-server MINECRAFT_WORLD=survival ./gradlew integrationTest
 ```
 
-**Test script** — `integration/run.sh` covers ~95 assertions (47 standard + 18 CoreProtect + 12 Towny/Residence + 8 WorldGuard + 5 BlueMap/Dynmap status + 5 scan-all):
+**Test script** — `integration/run.sh` covers command flow and claim-provider integration assertions:
 - `status`, `scan`, `plans`, `plan <id>`
 - `apply` preview + staged `confirm`
 - quarantine listing (ACTIVE), `undo` (RESTORED), `drop` + confirm + gone
 - `confirm` with nothing pending; unknown subcommand; missing arg
-- CoreProtect: status shows active, scan rescues r.0.0, prunes r.1.0
-- `summary.json` contains non-zero `coreprotectRescued`
-- BlueMap / Dynmap: status shows BlueMap: and Dynmap: lines
 - `/prune scan all`: scans all loaded worlds, plan created for test world
 
 **Seed script** — `integration/seed.sh` creates all fixtures in one pass:
 - `r.100.100.mca`, `r.101.100.mca` — far-from-spawn prune candidates
-- `r.0.0.mca`, `r.1.0.mca` — CoreProtect fixture regions
-- Seeds CoreProtect DB with block activity at (256, 64, 256) → rescues r.0.0
 - `plugins/Towny/data/townblocks/world_1600_1600.data` — Towny file-fallback fixture → keeps r.50.50
 - `plugins/Residence/Save/Global.yml` with a residence at blocks (26112–26623 × 25600–26111) → keeps r.51.50
 - `plugins/WorldGuard/worlds/world/regions.yml` with cuboid region at blocks (26624–27135 × 25600–26111) → keeps r.52.50; also seeds `r.52.50.mca`
