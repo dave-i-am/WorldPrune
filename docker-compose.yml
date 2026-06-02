@@ -5,14 +5,15 @@ services:
     environment:
       EULA: "TRUE"
       TYPE: PAPER
-      VERSION: "1.21.11"
+      VERSION: "${MINECRAFT_VERSION:-1.21.4}"
       ONLINE_MODE: "FALSE"
       ENABLE_RCON: "true"
       RCON_PASSWORD: minecraft
       RCON_PORT: "25575"
-      # itzg downloads these from Modrinth on startup; pinned to exact version numbers
-      # so the test environment is reproducible.  Renovate keeps these current.
-      MODRINTH_PROJECTS: "coreprotect:23.1,bluemap:5.14-paper,dynmap:3.7-beta-8"
+      # Optional Modrinth projects to install for integration.
+      MODRINTH_PROJECTS: "${MODRINTH_PROJECTS-}"
+      # Optional direct plugin URLs.
+      PLUGINS: "${PAPER_PLUGIN_URLS-}"
     ports:
       - "25565:25565"
     stdin_open: true
