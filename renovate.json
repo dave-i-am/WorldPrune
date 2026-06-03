@@ -1,6 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended", ":semanticPrefixChore(deps)"],
+  "useBaseBranchConfig": "merge",
   "customDatasources": {
     "papermc": {
       "defaultRegistryUrlTemplate": "https://api.papermc.io/v2/projects/paper",
