@@ -22,7 +22,7 @@ dependencies {
     // sqlite-jdbc is shaded into the JAR (see shadowJar task below).
     implementation("org.xerial:sqlite-jdbc:3.53.2.0")
 
-    testImplementation("org.junit.jupiter:junit-jupiter:6.0.3")
+    testImplementation("org.junit.jupiter:junit-jupiter:6.1.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testImplementation("org.mockito:mockito-core:5.23.0")
     testImplementation("io.papermc.paper:paper-api:1.21.11-R0.1-SNAPSHOT")
