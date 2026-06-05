@@ -20,7 +20,7 @@ repositories {
 dependencies {
     compileOnly("org.spigotmc:spigot-api:$spigotVersion")
     // sqlite-jdbc is shaded into the JAR (see shadowJar task below).
-    implementation("org.xerial:sqlite-jdbc:3.53.1.0")
+    implementation("org.xerial:sqlite-jdbc:3.53.2.0")
 
     testImplementation("org.junit.jupiter:junit-jupiter:6.0.3")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
