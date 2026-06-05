@@ -14,7 +14,9 @@
     {
       "customType": "regex",
       "description": "Update Minecraft server version in docker-compose.yml",
-      "fileMatch": ["^docker-compose\\.yml$"],
+      "managerFilePatterns": [
+        "/^docker-compose\\.yml$/"
+      ],
       "matchStrings": ["VERSION: \"(?<currentValue>[0-9]+\\.[0-9]+(?:\\.[0-9]+)?)\""],
       "depNameTemplate": "paper",
       "datasourceTemplate": "custom.papermc",
