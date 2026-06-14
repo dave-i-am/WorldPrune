@@ -3,7 +3,7 @@ plugins {
     jacoco
     checkstyle
     id("com.gradleup.shadow") version "9.4.2"
-    id("com.github.spotbugs") version "6.5.5"
+    id("com.github.spotbugs") version "6.5.6"
 }
 
 group = "dev.minecraft.prune"
