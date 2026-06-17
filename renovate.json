@@ -2,6 +2,8 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended", ":semanticCommitTypeAll(chore)"],
   "useBaseBranchConfig": "merge",
+  "automerge": true,
+  "automergeType": "pr",
   "customDatasources": {
     "papermc": {
       "defaultRegistryUrlTemplate": "https://api.papermc.io/v2/projects/paper",
