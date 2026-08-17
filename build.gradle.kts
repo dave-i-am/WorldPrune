@@ -55,7 +55,7 @@ tasks.jacocoTestReport {
 }
 
 checkstyle {
-    toolVersion = "13.5.0"
+    toolVersion = "13.11.0"
     configFile = file("config/checkstyle/checkstyle.xml")
     isIgnoreFailures = false
 }
