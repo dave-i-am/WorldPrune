@@ -29,7 +29,7 @@ jobs:
     name: Compile & test (Spigot ${{ matrix.spigot-version }})
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up Java 21
         uses: actions/setup-java@v5
@@ -46,7 +46,7 @@ jobs:
     needs: build
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up Java 21
         uses: actions/setup-java@v5
@@ -70,7 +70,7 @@ jobs:
     if: github.event_name == 'pull_request'
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
